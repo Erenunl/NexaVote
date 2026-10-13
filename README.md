@@ -124,7 +124,7 @@ Reveal order is stored per edition and never changes ballot data. The selector e
 Opening the public results screen starts one synchronized 26-second presentation for every connected viewer:
 
 - the supplied music begins from its 4-second mark;
-- **UNITED BY MUSIC** appears when the audio reaches 13 seconds and remains visible by itself for 5 seconds;
+- **UNITED BY MUSIC** appears when the audio reaches 11 seconds and remains visible by itself until the video begins;
 - the opening video begins when the audio reaches 18 seconds;
 - music and video stop at the audio's 30-second mark, then the empty scoreboard is shown.
 

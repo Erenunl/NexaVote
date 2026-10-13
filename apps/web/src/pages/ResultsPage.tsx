@@ -36,7 +36,7 @@ const REVEAL_TIMING = {
 } as const;
 const OPENING_TIMING = {
   audioStartSeconds: 4,
-  titleAt: 9000,
+  titleAt: 7000,
   titleEndAt: 14000,
   videoAt: 14000,
   endAt: 26000,
