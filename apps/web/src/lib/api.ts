@@ -20,6 +20,8 @@ const errorMessages: Record<string, string> = {
   INVALID_PHASE: 'Geçersiz oylama aşaması.',
   INVALID_DISCORD_ID: 'Geçerli bir Discord kullanıcı kimliği girin.',
   INVALID_PASSWORD: 'Geçersiz şifre.',
+  JURY_NOT_SUBMITTED: 'Bu jüri henüz oyunu göndermedi.',
+  JURY_ALREADY_REVEALED: 'Bu jürinin oyları daha önce açıklandı.',
 };
 
 export async function api<T>(path: string, options: RequestInit & { token?: string | null } = {}): Promise<T> {

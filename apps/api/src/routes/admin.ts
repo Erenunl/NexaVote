@@ -181,7 +181,33 @@ adminRoutes.get('/results', async (context) => {
     FROM ballots b JOIN countries jury ON jury.id = b.jury_country_id
     JOIN ballot_scores bs ON bs.ballot_id = b.id JOIN countries recipient ON recipient.id = bs.recipient_country_id
     WHERE b.edition_id = ? ORDER BY b.submitted_at, bs.points DESC`).bind(editionId).all();
-  return context.json({ scoreboard: scoreboard.results, breakdown: breakdown.results });
+  const submittedJuries = await context.env.DB.prepare(`SELECT jury.id AS countryId, jury.name AS country,
+    jury.flag_emoji AS flag, b.submitted_at AS submittedAt, jr.reveal_order AS revealOrder,
+    jr.revealed_at AS revealedAt
+    FROM ballots b JOIN countries jury ON jury.id = b.jury_country_id
+    LEFT JOIN jury_reveals jr ON jr.edition_id = b.edition_id AND jr.jury_country_id = b.jury_country_id
+    WHERE b.edition_id = ?
+    ORDER BY CASE WHEN jr.reveal_order IS NULL THEN 1 ELSE 0 END, jr.reveal_order, b.submitted_at, jury.name`)
+    .bind(editionId).all();
+  return context.json({ scoreboard: scoreboard.results, breakdown: breakdown.results, submittedJuries: submittedJuries.results });
+});
+
+adminRoutes.post('/editions/:editionId/reveals/:countryId', async (context) => {
+  const { editionId, countryId } = context.req.param();
+  const ballot = await context.env.DB.prepare('SELECT id FROM ballots WHERE edition_id = ? AND jury_country_id = ?')
+    .bind(editionId, countryId).first();
+  if (!ballot) return context.json({ error: { code: 'JURY_NOT_SUBMITTED', message: 'This jury has not submitted a ballot yet.' } }, 409);
+  const existing = await context.env.DB.prepare('SELECT reveal_order AS revealOrder FROM jury_reveals WHERE edition_id = ? AND jury_country_id = ?')
+    .bind(editionId, countryId).first<{ revealOrder: number }>();
+  if (existing) return context.json({ error: { code: 'JURY_ALREADY_REVEALED', message: 'This jury has already been revealed.' } }, 409);
+  const id = crypto.randomUUID();
+  await context.env.DB.prepare(`INSERT INTO jury_reveals (id, edition_id, jury_country_id, reveal_order)
+    SELECT ?, ?, ?, COALESCE(MAX(reveal_order), 0) + 1 FROM jury_reveals WHERE edition_id = ?`)
+    .bind(id, editionId, countryId, editionId).run();
+  const reveal = await context.env.DB.prepare('SELECT reveal_order AS revealOrder, revealed_at AS revealedAt FROM jury_reveals WHERE id = ?')
+    .bind(id).first();
+  await audit(context.env.DB, 'admin', context.get('adminSessionId'), 'results.jury_revealed', 'country', countryId, editionId, reveal ?? {});
+  return context.json({ revealed: true, ...reveal }, 201);
 });
 
 adminRoutes.get('/export', async (context) => {

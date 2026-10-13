@@ -110,6 +110,15 @@ Do not run `seed/dev.sql` against production unless the demo edition is genuinel
 
 The workflow copies `index.html` to `404.html` so direct visits to `/admin`, `/jury`, and other client routes load correctly on GitHub Pages.
 
+## Live jury reveal workflow
+
+1. Close voting when every expected ballot has been submitted.
+2. Open **Admin → Results** and enable the public results screen.
+3. Choose any submitted, unrevealed jury from **Next jury** and reveal it.
+4. Keep the public results page open. It polls automatically, announces the selected jury, and adds its 1–12 points one by one without a browser refresh.
+
+Reveal order is stored per edition and never changes ballot data. The selector excludes juries that have not submitted and juries that have already been revealed.
+
 ## Production checklist
 
 - Replace the D1 placeholder database ID.

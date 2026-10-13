@@ -9,6 +9,7 @@ type Dashboard = { edition: Edition | null; stats: { total: number; submitted: n
 type Entry = { id: string; editionId: string; countryId: string; code: string; country: string; flag: string; artist: string; songTitle: string; youtubeUrl?: string; displayOrder: number };
 type Result = { countryId: string; country: string; flag: string; totalPoints: number };
 type Breakdown = { juryCountry: string; recipientCountry: string; points: number };
+type SubmittedJury = { countryId: string; country: string; flag: string; submittedAt: string; revealOrder?: number | null; revealedAt?: string | null };
 type AuditEvent = { id: string; action: string; actorType: string; targetType?: string; targetId?: string; createdAt: string };
 
 export function AdminPage() {
@@ -68,10 +69,64 @@ function Editions({ token, refreshDashboard }: { token: string; refreshDashboard
 }
 
 function AdminResults({ token, edition, patchEdition }: { token: string; edition: Edition; patchEdition: (patch: Record<string, unknown>) => Promise<void> }) {
-  const [results, setResults] = useState<Result[]>([]); const [breakdown, setBreakdown] = useState<Breakdown[]>([]); useEffect(() => { api<{ scoreboard: Result[]; breakdown: Breakdown[] }>(`/api/admin/results?editionId=${edition.id}`, { token }).then((data) => { setResults(data.scoreboard); setBreakdown(data.breakdown); }); }, [edition.id, token]);
+  const [results, setResults] = useState<Result[]>([]);
+  const [breakdown, setBreakdown] = useState<Breakdown[]>([]);
+  const [submittedJuries, setSubmittedJuries] = useState<SubmittedJury[]>([]);
+  const [selectedJuryId, setSelectedJuryId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const load = useCallback(() => api<{ scoreboard: Result[]; breakdown: Breakdown[]; submittedJuries: SubmittedJury[] }>(`/api/admin/results?editionId=${edition.id}`, { token }).then((data) => {
+    setResults(data.scoreboard);
+    setBreakdown(data.breakdown);
+    setSubmittedJuries(data.submittedJuries);
+  }), [edition.id, token]);
+  useEffect(() => { load(); }, [load]);
   const download = async (format: 'json' | 'csv') => { const response = await fetch(`${apiUrl}/api/admin/export?editionId=${edition.id}&format=${format}`, { headers: { Authorization: `Bearer ${token}` } }); if (!response.ok) return; const blob = await response.blob(); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `nexavision-${edition.slug}-results.${format}`; link.click(); URL.revokeObjectURL(link.href); };
+  const revealJury = async () => {
+    if (!selectedJuryId) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/api/admin/editions/${edition.id}/reveals/${selectedJuryId}`, { method: 'POST', token });
+      setSelectedJuryId('');
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Jüri oyları açıklanamadı.');
+    } finally {
+      setBusy(false);
+    }
+  };
   const juries = [...new Set(breakdown.map((vote) => vote.juryCountry))];
-  return <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_340px]"><div className="space-y-6"><div className="panel p-4"><div className="space-y-2">{results.map((result, index) => <div key={result.countryId} className="grid grid-cols-[45px_1fr_auto] items-center rounded-2xl border border-white/[.06] p-3"><span className="font-display text-lg font-bold text-slate-500">{index + 1}</span><span className="font-semibold"><span className="mr-3 text-2xl">{result.flag}</span>{result.country}</span><span className="font-display text-xl font-bold">{result.totalPoints} puan</span></div>)}</div></div><div className="panel p-5"><h2 className="font-display text-xl font-semibold">Jüri bazında puan dökümü</h2><div className="mt-4 grid gap-3 md:grid-cols-2">{juries.map((jury) => <details key={jury} className="rounded-2xl border border-white/[.07] bg-black/15 p-4"><summary className="cursor-pointer font-semibold">{jury}</summary><div className="mt-3 space-y-1">{breakdown.filter((vote) => vote.juryCountry === jury).map((vote) => <div key={`${jury}-${vote.points}`} className="flex justify-between text-sm"><span className="text-slate-400">{vote.recipientCountry}</span><strong>{vote.points}</strong></div>)}</div></details>)}</div>{juries.length === 0 && <p className="mt-4 text-sm text-slate-500">Henüz gönderilmiş oy pusulası yok.</p>}</div></div><aside className="panel h-fit p-6"><h2 className="font-display text-xl font-semibold">Sonuç kontrolleri</h2><button className="btn-primary mt-5 w-full" onClick={() => patchEdition({ resultsPublic: !edition.resultsPublic })}>{edition.resultsPublic ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}{edition.resultsPublic ? 'Sonuçları gizle' : 'Sonuçları yayımla'}</button><label className="mt-5 block text-xs font-bold uppercase tracking-wider text-slate-500">Açıklanan jüri sayısı<input type="number" min="0" className="input mt-2" value={edition.revealCount} onChange={(event) => patchEdition({ revealCount: Number(event.target.value) })} /></label><p className="mt-2 text-xs text-slate-500">Oy gönderen tüm jürileri açıklamak için 0 yazın.</p><div className="mt-6 grid grid-cols-2 gap-2"><button className="btn-secondary px-3" onClick={() => download('csv')}><Download className="h-4 w-4" />CSV</button><button className="btn-secondary px-3" onClick={() => download('json')}><Download className="h-4 w-4" />JSON</button></div></aside></div>;
+  const revealedJuries = submittedJuries.filter((jury) => jury.revealOrder != null).sort((a, b) => Number(a.revealOrder) - Number(b.revealOrder));
+  const availableJuries = submittedJuries.filter((jury) => jury.revealOrder == null);
+  const selectedJury = availableJuries.find((jury) => jury.countryId === selectedJuryId);
+  return <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_380px]">
+    <div className="space-y-6">
+      <div className="panel p-4"><div className="space-y-2">{results.map((result, index) => <div key={result.countryId} className="grid grid-cols-[45px_1fr_auto] items-center rounded-2xl border border-white/[.06] p-3"><span className="font-display text-lg font-bold text-slate-500">{index + 1}</span><span className="font-semibold"><span className="mr-3 text-2xl">{result.flag}</span>{result.country}</span><span className="font-display text-xl font-bold">{result.totalPoints} puan</span></div>)}</div></div>
+      <div className="panel p-5"><h2 className="font-display text-xl font-semibold">Jüri bazında puan dökümü</h2><div className="mt-4 grid gap-3 md:grid-cols-2">{juries.map((jury) => <details key={jury} className="rounded-2xl border border-white/[.07] bg-black/15 p-4"><summary className="cursor-pointer font-semibold">{jury}</summary><div className="mt-3 space-y-1">{breakdown.filter((vote) => vote.juryCountry === jury).map((vote) => <div key={`${jury}-${vote.points}`} className="flex justify-between text-sm"><span className="text-slate-400">{vote.recipientCountry}</span><strong>{vote.points}</strong></div>)}</div></details>)}</div>{juries.length === 0 && <p className="mt-4 text-sm text-slate-500">Henüz gönderilmiş oy pusulası yok.</p>}</div>
+    </div>
+    <aside className="panel h-fit p-6">
+      <h2 className="font-display text-xl font-semibold">Canlı sonuç kontrolü</h2>
+      <button className="btn-primary mt-5 w-full" onClick={() => patchEdition({ resultsPublic: !edition.resultsPublic })}>{edition.resultsPublic ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}{edition.resultsPublic ? 'Sonuçları gizle' : 'Sonuç ekranını aç'}</button>
+      <div className="mt-6 rounded-2xl border border-white/15 bg-black/15 p-4">
+        <p className="text-xs font-bold uppercase tracking-wider text-softpink">Sıradaki jüri</p>
+        <select className="input mt-3" value={selectedJuryId} onChange={(event) => setSelectedJuryId(event.target.value)}>
+          <option value="">Bir jüri seçin</option>
+          {availableJuries.map((jury) => <option key={jury.countryId} value={jury.countryId}>{jury.flag} {jury.country}</option>)}
+        </select>
+        <button className="btn-secondary mt-3 w-full" disabled={!edition.resultsPublic || !selectedJuryId || busy} onClick={revealJury}><Radio className="h-4 w-4" />{busy ? 'Açıklanıyor…' : selectedJury ? `${selectedJury.country} oylarını açıkla` : 'Jüri oylarını açıkla'}</button>
+        {!edition.resultsPublic && <p className="mt-3 text-xs leading-5 text-orange">Önce sonuç ekranını açın; ardından seçtiğiniz jürinin puanları izleyicilere canlı aktarılır.</p>}
+        {availableJuries.length === 0 && submittedJuries.length > 0 && <p className="mt-3 text-xs text-emerald-300">Gönderilen tüm jüri oyları açıklandı.</p>}
+        {submittedJuries.length === 0 && <p className="mt-3 text-xs text-pink-50/50">Henüz oyunu gönderen jüri yok.</p>}
+        {error && <p className="mt-3 text-xs text-rose-300">{error}</p>}
+      </div>
+      <div className="mt-6">
+        <div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wider text-pink-50/50">Açıklama sırası</p><span className="text-xs text-pink-50/50">{revealedJuries.length}/{submittedJuries.length}</span></div>
+        <div className="mt-3 space-y-2">{revealedJuries.map((jury) => <div key={jury.countryId} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.06] px-3 py-2 text-sm"><span className="grid h-7 w-7 place-items-center rounded-lg bg-pink/20 font-bold">{jury.revealOrder}</span><span>{jury.flag} {jury.country}</span></div>)}</div>
+      </div>
+      <div className="mt-6 grid grid-cols-2 gap-2"><button className="btn-secondary px-3" onClick={() => download('csv')}><Download className="h-4 w-4" />CSV</button><button className="btn-secondary px-3" onClick={() => download('json')}><Download className="h-4 w-4" />JSON</button></div>
+    </aside>
+  </div>;
 }
 
 const auditActionLabels: Record<string, string> = {
@@ -87,6 +142,7 @@ const auditActionLabels: Record<string, string> = {
   'jury.login': 'Jüri girişi',
   'ballot.reset': 'Oy pusulası sıfırlandı',
   'ballot.submitted': 'Oy pusulası gönderildi',
+  'results.jury_revealed': 'Jüri oyları canlı sonuçlarda açıklandı',
 };
 
 function AuditLog({ token }: { token: string }) { const [events, setEvents] = useState<AuditEvent[]>([]); useEffect(() => { api<{ events: AuditEvent[] }>('/api/admin/audit-log', { token }).then((data) => setEvents(data.events)); }, [token]); return <div className="panel mt-6 overflow-hidden"><div className="border-b border-white/[.07] p-5"><h2 className="font-display text-xl font-semibold">Güvenlik ve işlem kayıtları</h2></div><div className="divide-y divide-white/[.06]">{events.map((event) => <div key={event.id} className="grid gap-2 p-4 text-sm sm:grid-cols-[180px_1fr_120px]"><span className="text-slate-500">{new Date(event.createdAt).toLocaleString('tr-TR')}</span><span className="font-medium">{auditActionLabels[event.action] || event.action}</span><span className="text-right text-slate-500">{event.actorType === 'admin' ? 'Yönetici' : event.actorType === 'jury' ? 'Jüri' : event.actorType === 'integration' ? 'Entegrasyon' : event.actorType}</span></div>)}</div></div>; }

@@ -43,6 +43,7 @@
   .scoreboard-row { @apply relative grid grid-cols-[48px_1fr_auto] items-center gap-3 overflow-hidden rounded-xl border border-white/25 px-3 py-2.5 shadow-lg transition duration-300 hover:z-10 hover:scale-[1.012] sm:grid-cols-[58px_1fr_auto] sm:px-4; background: linear-gradient(100deg, rgba(128,33,185,.92), rgba(229,0,164,.88) 56%, rgba(246,61,88,.92)); box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 8px 22px rgba(72,17,100,.3); }
   .scoreboard-row::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(110deg, rgba(255,255,255,.17), transparent 25%, transparent 75%, rgba(255,104,45,.2)); }
   .scoreboard-row-winner { background: linear-gradient(100deg, #ff682d, #f63d58 38%, #e500a4 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,.36), 0 14px 35px rgba(255,104,45,.28); }
+  .scoreboard-row-highlighted { z-index: 5; transform: scale(1.018); border-color: rgba(255,255,255,.85); box-shadow: 0 0 0 3px rgba(255,145,202,.42), 0 18px 45px rgba(229,0,164,.5); }
 }
 
 .broadcast-bg { position: fixed; inset: 0; z-index: -5; overflow: hidden; pointer-events: none; background: linear-gradient(138deg, #2a0737 0%, #59106d 48%, #210528 100%); }
@@ -68,12 +69,18 @@
 .point-ribbon { position: relative; background: linear-gradient(105deg, rgba(128,33,185,.88), rgba(229,0,164,.78), rgba(246,61,88,.78)); box-shadow: inset 0 1px 0 rgba(255,255,255,.25); }
 .point-ribbon-twelve { background: linear-gradient(105deg, #ff682d, #f63d58, #e500a4); box-shadow: 0 10px 30px rgba(255,104,45,.25), inset 0 1px 0 rgba(255,255,255,.35); }
 .modal-backdrop { background: rgba(51,7,63,.78); }
+.jury-reveal-backdrop { background: radial-gradient(circle at 50% 45%, rgba(229,0,164,.48), transparent 35%), rgba(28,3,35,.92); backdrop-filter: blur(20px); }
+.jury-reveal-intro { animation: juryRevealIntro 1.9s ease both; filter: drop-shadow(0 24px 65px rgba(229,0,164,.48)); }
+.jury-point-card { background: linear-gradient(115deg, rgba(72,17,100,.96), rgba(128,33,185,.96) 48%, rgba(229,0,164,.94)); border-color: rgba(255,255,255,.35); box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 18px 60px rgba(31,2,38,.7), 0 0 42px rgba(229,0,164,.32); backdrop-filter: blur(22px); animation: juryPointIn .38s cubic-bezier(.2,.8,.2,1) both; }
+.jury-point-card-twelve { background: linear-gradient(115deg, #ff682d, #f63d58 42%, #e500a4); box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 18px 65px rgba(255,104,45,.46), 0 0 55px rgba(229,0,164,.42); }
 table tbody tr { transition: background-color .2s ease; }
 table tbody tr:hover { background-color: rgba(255,63,173,.08); }
 
 @keyframes drift { to { transform: rotate(-10deg) translate3d(4vw, 2vw, 0); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes revealRow { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes juryRevealIntro { 0% { opacity: 0; transform: scale(.82) translateY(28px); } 22%, 78% { opacity: 1; transform: scale(1) translateY(0); } 100% { opacity: 0; transform: scale(1.08); } }
+@keyframes juryPointIn { from { opacity: 0; transform: translateY(-22px) scale(.94); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .reveal-row { animation: revealRow .55s both; }
 
 @media (max-width: 640px) {

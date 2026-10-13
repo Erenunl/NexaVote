@@ -54,24 +54,50 @@ publicRoutes.get('/status', async (context) => {
 
 publicRoutes.get('/results', async (context) => {
   const edition = await context.env.DB.prepare(`
-    SELECT id, name, results_public AS resultsPublic, reveal_count AS revealCount
+    SELECT id, name, results_public AS resultsPublic
     FROM editions WHERE is_current = 1
-  `).first<{ id: string; name: string; resultsPublic: number; revealCount: number }>();
+  `).first<{ id: string; name: string; resultsPublic: number }>();
   if (!edition?.resultsPublic) return context.json({ error: { code: 'RESULTS_HIDDEN', message: 'Results have not been published.' } }, 404);
   const ballotCount = await context.env.DB.prepare('SELECT COUNT(*) AS count FROM ballots WHERE edition_id = ?').bind(edition.id).first<{ count: number }>();
-  const limit = edition.revealCount > 0 ? edition.revealCount : ballotCount?.count ?? 0;
   const rows = await context.env.DB.prepare(`
-    WITH revealed AS (
-      SELECT id FROM ballots WHERE edition_id = ? ORDER BY submitted_at, id LIMIT ?
+    WITH revealed_ballots AS (
+      SELECT b.id FROM ballots b JOIN jury_reveals jr
+        ON jr.edition_id = b.edition_id AND jr.jury_country_id = b.jury_country_id
+      WHERE b.edition_id = ?
     )
     SELECT c.id AS countryId, c.name AS country, c.flag_emoji AS flag,
            COALESCE(SUM(bs.points), 0) AS totalPoints
     FROM entries e JOIN countries c ON c.id = e.country_id
-    LEFT JOIN ballot_scores bs ON bs.recipient_country_id = c.id AND bs.ballot_id IN (SELECT id FROM revealed)
+    LEFT JOIN ballot_scores bs ON bs.recipient_country_id = c.id AND bs.ballot_id IN (SELECT id FROM revealed_ballots)
     WHERE e.edition_id = ?
     GROUP BY c.id, c.name, c.flag_emoji
     ORDER BY totalPoints DESC, c.name
-  `).bind(edition.id, limit, edition.id).all();
-  return context.json({ edition: edition.name, juriesRevealed: limit, juriesSubmitted: ballotCount?.count ?? 0, scoreboard: rows.results });
+  `).bind(edition.id, edition.id).all();
+  const revealRows = await context.env.DB.prepare(`SELECT jr.reveal_order AS revealOrder,
+    jr.revealed_at AS revealedAt, jury.id AS juryCountryId, jury.name AS juryCountry,
+    jury.flag_emoji AS juryFlag, recipient.id AS recipientCountryId, recipient.name AS recipientCountry,
+    recipient.flag_emoji AS recipientFlag, bs.points
+    FROM jury_reveals jr JOIN countries jury ON jury.id = jr.jury_country_id
+    JOIN ballots b ON b.edition_id = jr.edition_id AND b.jury_country_id = jr.jury_country_id
+    JOIN ballot_scores bs ON bs.ballot_id = b.id
+    JOIN countries recipient ON recipient.id = bs.recipient_country_id
+    WHERE jr.edition_id = ? ORDER BY jr.reveal_order, bs.points`)
+    .bind(edition.id).all<{
+      revealOrder: number; revealedAt: string; juryCountryId: string; juryCountry: string; juryFlag: string;
+      recipientCountryId: string; recipientCountry: string; recipientFlag: string; points: number;
+    }>();
+  const reveals = revealRows.results.reduce<Array<{
+    revealOrder: number; revealedAt: string; juryCountryId: string; juryCountry: string; juryFlag: string;
+    scores: Array<{ countryId: string; country: string; flag: string; points: number }>;
+  }>>((result, row) => {
+    let reveal = result[result.length - 1];
+    if (!reveal || reveal.revealOrder !== row.revealOrder) {
+      reveal = { revealOrder: row.revealOrder, revealedAt: row.revealedAt, juryCountryId: row.juryCountryId, juryCountry: row.juryCountry, juryFlag: row.juryFlag, scores: [] };
+      result.push(reveal);
+    }
+    reveal.scores.push({ countryId: row.recipientCountryId, country: row.recipientCountry, flag: row.recipientFlag, points: row.points });
+    return result;
+  }, []);
+  return context.json({ edition: edition.name, juriesRevealed: reveals.length, juriesSubmitted: ballotCount?.count ?? 0, scoreboard: rows.results, reveals });
 });
 
