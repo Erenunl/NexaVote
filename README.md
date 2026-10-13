@@ -121,12 +121,12 @@ Reveal order is stored per edition and never changes ballot data. The selector e
 
 ### Results opening sequence
 
-Opening the public results screen starts one synchronized 24-second presentation for every connected viewer:
+Opening the public results screen starts one synchronized 22-second presentation for every connected viewer:
 
 - the supplied music begins from its 4-second mark;
-- **UNITED BY MUSIC** appears when the audio reaches 11 seconds and remains visible by itself for 5 seconds;
-- the opening video begins when the audio reaches 16 seconds;
-- music and video stop at the audio's 28-second mark, then the empty scoreboard is shown.
+- **UNITED BY MUSIC** appears when the audio reaches 9 seconds and remains visible by itself for 5 seconds;
+- the opening video begins when the audio reaches 14 seconds;
+- music and video stop at the audio's 26-second mark, then the empty scoreboard is shown.
 
 The opening assets are `apps/web/public/results-opening.mp3` and the 12-second `apps/web/public/results-opening.mp4`. The video begins after the five-second **UNITED BY MUSIC** title card and is synchronized from the shared server timestamp. Viewers can press **Yayın sesini hazırla** while waiting so browsers permit synchronized sound playback.
 

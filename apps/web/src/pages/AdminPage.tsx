@@ -121,7 +121,7 @@ function AdminResults({ token, edition, patchEdition }: { token: string; edition
   const availableJuries = submittedJuries.filter((jury) => jury.revealOrder == null);
   const selectedJury = availableJuries.find((jury) => jury.countryId === selectedJuryId);
   const openingRemaining = edition.resultsOpenedAt
-    ? Math.max(0, Math.ceil((Date.parse(edition.resultsOpenedAt) + 24_000 - now) / 1000))
+    ? Math.max(0, Math.ceil((Date.parse(edition.resultsOpenedAt) + 22_000 - now) / 1000))
     : 0;
   return <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_380px]">
     <div className="space-y-6">
