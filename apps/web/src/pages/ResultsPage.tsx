@@ -27,6 +27,12 @@ type ActiveReveal = {
 };
 
 const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+const REVEAL_TIMING = {
+  intro: 2800,
+  standardPoint: 2000,
+  highPoint: 2800,
+  complete: 1800,
+} as const;
 
 function addScore(scoreboard: Result[], score: RevealScore): Result[] {
   return scoreboard
@@ -52,18 +58,18 @@ export function ResultsPage() {
       const reveal = revealQueue.current.shift();
       if (!reveal) break;
       setActiveReveal({ reveal, stage: 'intro' });
-      await wait(1900);
+      await wait(REVEAL_TIMING.intro);
       const scores = [...reveal.scores].sort((a, b) => a.points - b.points);
       for (let index = 0; index < scores.length && mounted.current; index += 1) {
         const score = scores[index];
         if (!score) continue;
         setActiveReveal({ reveal, stage: 'points', score, scoreIndex: index + 1 });
         setScoreboard((current) => addScore(current, score));
-        await wait(score.points >= 10 ? 1050 : 650);
+        await wait(score.points >= 10 ? REVEAL_TIMING.highPoint : REVEAL_TIMING.standardPoint);
       }
       if (!mounted.current) break;
       setActiveReveal({ reveal, stage: 'complete' });
-      await wait(1100);
+      await wait(REVEAL_TIMING.complete);
       setActiveReveal(null);
     }
     processingQueue.current = false;
@@ -138,7 +144,7 @@ export function ResultsPage() {
       </div>
 
       {activeReveal?.stage === 'intro' && <div className="jury-reveal-backdrop fixed inset-0 z-50 grid place-items-center p-5" role="status" aria-live="assertive"><div className="jury-reveal-intro text-center"><span className="text-7xl sm:text-8xl">{activeReveal.reveal.juryFlag}</span><p className="eyebrow mt-8">Sıradaki jüri</p><h2 className="mt-3 font-display text-5xl font-black uppercase sm:text-7xl">{activeReveal.reveal.juryCountry}</h2><p className="mt-5 text-xl font-semibold text-pink-50/70">Jürisinin oyları geliyor</p></div></div>}
-      {activeReveal?.stage === 'points' && activeReveal.score && <div className="pointer-events-none fixed inset-x-0 top-24 z-50 flex justify-center px-4" role="status" aria-live="assertive"><div className={`jury-point-card flex w-full max-w-xl items-center gap-4 rounded-3xl border p-4 sm:p-5 ${activeReveal.score.points === 12 ? 'jury-point-card-twelve' : ''}`}><span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-white/15 font-display text-3xl font-black">{activeReveal.score.points}</span><div className="min-w-0 flex-1"><p className="text-xs font-black uppercase tracking-[.2em] text-pink-100/55">{activeReveal.reveal.juryFlag} {activeReveal.reveal.juryCountry} jürisi</p><p className="mt-1 truncate font-display text-2xl font-black uppercase sm:text-3xl">{activeReveal.score.flag} {activeReveal.score.country}</p></div><span className="hidden text-xs font-bold text-pink-100/45 sm:block">{activeReveal.scoreIndex}/10</span></div></div>}
+      {activeReveal?.stage === 'points' && activeReveal.score && <div key={`${activeReveal.reveal.revealOrder}-${activeReveal.scoreIndex}`} className="pointer-events-none fixed inset-x-0 top-24 z-50 flex justify-center px-4" role="status" aria-live="assertive"><div className={`jury-point-card flex w-full max-w-xl items-center gap-4 rounded-3xl border p-4 sm:p-5 ${activeReveal.score.points === 12 ? 'jury-point-card-twelve' : ''}`}><span className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-2xl bg-white/15 font-display font-black"><strong className="text-3xl leading-none">{activeReveal.score.points}</strong><small className="mt-1 text-[9px] uppercase tracking-wider text-white/60">puan</small></span><div className="min-w-0 flex-1"><p className="text-xs font-black uppercase tracking-[.2em] text-pink-100/55">{activeReveal.reveal.juryFlag} {activeReveal.reveal.juryCountry} jürisi</p><p className="mt-1 truncate font-display text-2xl font-black uppercase sm:text-3xl">{activeReveal.score.flag} {activeReveal.score.country}</p></div><span className="hidden text-xs font-bold text-pink-100/45 sm:block">{activeReveal.scoreIndex}/10</span></div></div>}
       {activeReveal?.stage === 'complete' && <div className="pointer-events-none fixed inset-x-0 top-24 z-50 flex justify-center px-4" role="status" aria-live="polite"><div className="jury-point-card flex items-center gap-3 rounded-full border px-6 py-4"><Sparkles className="text-orange" /><span className="font-bold">{activeReveal.reveal.juryCountry} jürisinin oyları tamamlandı</span></div></div>}
     </section>
   );
