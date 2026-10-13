@@ -5,17 +5,23 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: '#050816',
-        panel: '#0b1024',
-        electric: '#6c63ff',
-        cyan: '#28d7ff',
-        gold: '#f7ca72',
+        ink: '#26042f',
+        panel: '#481164',
+        electric: '#e500a4',
+        pink: { DEFAULT: '#ff3fad', 50: '#fff3fa', 100: '#ffd9ee' },
+        violet: '#8021b9',
+        purple: '#481164',
+        orange: '#ff682d',
+        coral: '#f63d58',
+        softpink: '#ff91ca',
+        cyan: '#ff91ca',
+        gold: '#ff9b42',
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui'],
-        display: ['Space Grotesk', 'Inter', 'ui-sans-serif'],
+        display: ['Outfit', 'Inter', 'ui-sans-serif'],
       },
-      boxShadow: { glow: '0 0 60px rgba(108, 99, 255, .22)' },
+      boxShadow: { glow: '0 24px 80px rgba(229, 0, 164, .24)' },
       animation: { float: 'float 7s ease-in-out infinite', pulseSoft: 'pulseSoft 2.5s ease-in-out infinite' },
       keyframes: {
         float: { '0%,100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-12px)' } },
