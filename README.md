@@ -119,6 +119,17 @@ The workflow copies `index.html` to `404.html` so direct visits to `/admin`, `/j
 
 Reveal order is stored per edition and never changes ballot data. The selector excludes juries that have not submitted and juries that have already been revealed.
 
+### Results opening sequence
+
+Opening the public results screen starts one synchronized 24-second presentation for every connected viewer:
+
+- the supplied music begins from its 4-second mark;
+- **UNITED BY MUSIC** appears when the audio reaches 11 seconds and remains visible by itself for 5 seconds;
+- the opening video begins when the audio reaches 16 seconds;
+- music and video stop at the audio's 28-second mark, then the empty scoreboard is shown.
+
+The audio asset is `apps/web/public/results-opening.mp3`. The future 12-second opening video must be saved as `apps/web/public/results-opening.mp4`; until it is added, the site shows the built-in Nexavision motion placeholder. Viewers can press **Yayın sesini hazırla** while waiting so browsers permit synchronized sound playback.
+
 ## Production checklist
 
 - Replace the D1 placeholder database ID.

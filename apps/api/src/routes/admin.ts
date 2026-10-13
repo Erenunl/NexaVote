@@ -31,7 +31,8 @@ adminRoutes.use('/*', requireAdmin);
 
 adminRoutes.get('/dashboard', async (context) => {
   const edition = await context.env.DB.prepare(`SELECT id, name, slug, year, phase, results_public AS resultsPublic,
-    public_status_enabled AS publicStatusEnabled, reveal_count AS revealCount, voting_deadline AS votingDeadline
+    public_status_enabled AS publicStatusEnabled, reveal_count AS revealCount, voting_deadline AS votingDeadline,
+    results_opened_at AS resultsOpenedAt
     FROM editions WHERE is_current = 1`).first();
   if (!edition) return context.json({ edition: null, stats: null, juries: [] });
   const onlineSince = new Date(Date.now() - 90_000).toISOString();
@@ -75,13 +76,23 @@ adminRoutes.patch('/editions/:editionId', async (context) => {
   const body = await context.req.json<{ phase?: string; resultsPublic?: boolean; publicStatusEnabled?: boolean; revealCount?: number; votingDeadline?: string | null; makeCurrent?: boolean }>();
   if (body.phase && !['draft', 'open', 'closed'].includes(body.phase)) return context.json({ error: { code: 'INVALID_PHASE', message: 'Invalid voting phase.' } }, 400);
   if (body.makeCurrent) await context.env.DB.prepare('UPDATE editions SET is_current = 0 WHERE is_current = 1').run();
+  const current = await context.env.DB.prepare('SELECT results_public AS resultsPublic, results_opened_at AS resultsOpenedAt FROM editions WHERE id = ?')
+    .bind(id).first<{ resultsPublic: number; resultsOpenedAt: string | null }>();
+  if (!current) return context.json({ error: { code: 'NOT_FOUND', message: 'Edition not found.' } }, 404);
+  const now = new Date().toISOString();
+  const resultsOpenedAt = body.resultsPublic === undefined
+    ? current.resultsOpenedAt
+    : body.resultsPublic
+      ? (current.resultsPublic ? current.resultsOpenedAt : now)
+      : null;
   await context.env.DB.prepare(`UPDATE editions SET
     phase = COALESCE(?, phase), results_public = COALESCE(?, results_public),
     public_status_enabled = COALESCE(?, public_status_enabled), reveal_count = COALESCE(?, reveal_count),
     voting_deadline = CASE WHEN ? = 1 THEN ? ELSE voting_deadline END,
-    is_current = CASE WHEN ? = 1 THEN 1 ELSE is_current END, updated_at = ? WHERE id = ?`)
+    results_opened_at = ?, is_current = CASE WHEN ? = 1 THEN 1 ELSE is_current END, updated_at = ? WHERE id = ?`)
     .bind(body.phase ?? null, body.resultsPublic === undefined ? null : Number(body.resultsPublic), body.publicStatusEnabled === undefined ? null : Number(body.publicStatusEnabled),
-      body.revealCount ?? null, body.votingDeadline === undefined ? 0 : 1, body.votingDeadline ?? null, body.makeCurrent ? 1 : 0, new Date().toISOString(), id).run();
+      body.revealCount ?? null, body.votingDeadline === undefined ? 0 : 1, body.votingDeadline ?? null, resultsOpenedAt,
+      body.makeCurrent ? 1 : 0, now, id).run();
   await audit(context.env.DB, 'admin', context.get('adminSessionId'), 'edition.updated', 'edition', id, id, { fields: Object.keys(body) });
   return context.json({ updated: true });
 });

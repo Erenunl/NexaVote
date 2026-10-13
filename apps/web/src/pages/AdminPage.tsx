@@ -3,7 +3,7 @@ import type { LucideIcon } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { adminToken, api, apiUrl } from '../lib/api';
 
-type Edition = { id: string; name: string; slug: string; year: number; phase: string; resultsPublic: boolean; publicStatusEnabled: boolean; revealCount: number; votingDeadline?: string };
+type Edition = { id: string; name: string; slug: string; year: number; phase: string; resultsPublic: boolean; resultsOpenedAt?: string | null; publicStatusEnabled: boolean; revealCount: number; votingDeadline?: string };
 type Jury = { countryId: string; country: string; code: string; flag: string; discordUserId?: string; deliveryStatus?: string; credentialReady: number; status: string };
 type Dashboard = { edition: Edition | null; stats: { total: number; submitted: number; online: number; remaining: number } | null; juries: Jury[] };
 type Entry = { id: string; editionId: string; countryId: string; code: string; country: string; flag: string; artist: string; songTitle: string; youtubeUrl?: string; displayOrder: number };
@@ -75,12 +75,18 @@ function AdminResults({ token, edition, patchEdition }: { token: string; edition
   const [selectedJuryId, setSelectedJuryId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [now, setNow] = useState(Date.now());
   const load = useCallback(() => api<{ scoreboard: Result[]; breakdown: Breakdown[]; submittedJuries: SubmittedJury[] }>(`/api/admin/results?editionId=${edition.id}`, { token }).then((data) => {
     setResults(data.scoreboard);
     setBreakdown(data.breakdown);
     setSubmittedJuries(data.submittedJuries);
   }), [edition.id, token]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!edition.resultsOpenedAt) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, [edition.resultsOpenedAt]);
   const download = async (format: 'json' | 'csv') => { const response = await fetch(`${apiUrl}/api/admin/export?editionId=${edition.id}&format=${format}`, { headers: { Authorization: `Bearer ${token}` } }); if (!response.ok) return; const blob = await response.blob(); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `nexavision-${edition.slug}-results.${format}`; link.click(); URL.revokeObjectURL(link.href); };
   const revealJury = async () => {
     if (!selectedJuryId) return;
@@ -100,6 +106,9 @@ function AdminResults({ token, edition, patchEdition }: { token: string; edition
   const revealedJuries = submittedJuries.filter((jury) => jury.revealOrder != null).sort((a, b) => Number(a.revealOrder) - Number(b.revealOrder));
   const availableJuries = submittedJuries.filter((jury) => jury.revealOrder == null);
   const selectedJury = availableJuries.find((jury) => jury.countryId === selectedJuryId);
+  const openingRemaining = edition.resultsOpenedAt
+    ? Math.max(0, Math.ceil((Date.parse(edition.resultsOpenedAt) + 24_000 - now) / 1000))
+    : 0;
   return <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_380px]">
     <div className="space-y-6">
       <div className="panel p-4"><div className="space-y-2">{results.map((result, index) => <div key={result.countryId} className="grid grid-cols-[45px_1fr_auto] items-center rounded-2xl border border-white/[.06] p-3"><span className="font-display text-lg font-bold text-slate-500">{index + 1}</span><span className="font-semibold"><span className="mr-3 text-2xl">{result.flag}</span>{result.country}</span><span className="font-display text-xl font-bold">{result.totalPoints} puan</span></div>)}</div></div>
@@ -114,7 +123,7 @@ function AdminResults({ token, edition, patchEdition }: { token: string; edition
           <option value="">Bir jüri seçin</option>
           {availableJuries.map((jury) => <option key={jury.countryId} value={jury.countryId}>{jury.flag} {jury.country}</option>)}
         </select>
-        <button className="btn-secondary mt-3 w-full" disabled={!edition.resultsPublic || !selectedJuryId || busy} onClick={revealJury}><Radio className="h-4 w-4" />{busy ? 'Açıklanıyor…' : selectedJury ? `${selectedJury.country} oylarını açıkla` : 'Jüri oylarını açıkla'}</button>
+        <button className="btn-secondary mt-3 w-full" disabled={!edition.resultsPublic || openingRemaining > 0 || !selectedJuryId || busy} onClick={revealJury}><Radio className="h-4 w-4" />{openingRemaining > 0 ? `Açılış oynatılıyor · ${openingRemaining} sn` : busy ? 'Açıklanıyor…' : selectedJury ? `${selectedJury.country} oylarını açıkla` : 'Jüri oylarını açıkla'}</button>
         {!edition.resultsPublic && <p className="mt-3 text-xs leading-5 text-orange">Önce sonuç ekranını açın; ardından seçtiğiniz jürinin puanları izleyicilere canlı aktarılır.</p>}
         {availableJuries.length === 0 && submittedJuries.length > 0 && <p className="mt-3 text-xs text-emerald-300">Gönderilen tüm jüri oyları açıklandı.</p>}
         {submittedJuries.length === 0 && <p className="mt-3 text-xs text-pink-50/50">Henüz oyunu gönderen jüri yok.</p>}
