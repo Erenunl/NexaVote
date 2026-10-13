@@ -3,13 +3,13 @@ main = "src/index.ts"
 compatibility_date = "2025-01-09"
 
 [vars]
-ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+ALLOWED_ORIGINS = "https://erenunl.github.io,http://localhost:5173,http://127.0.0.1:5173"
 SESSION_TTL_MINUTES = "30"
 ADMIN_SESSION_TTL_MINUTES = "120"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "nexavision-db"
-database_id = "REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID"
+database_id = "13b9abce-68fd-4688-8e2e-c1837c2f04cf"
 migrations_dir = "migrations"
 
