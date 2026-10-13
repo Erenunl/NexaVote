@@ -29,7 +29,7 @@ The frontend and bot are independent clients of the same backend. Voting remains
 
 ## Prerequisites
 
-- 64-bit Node.js 20 or newer
+- 64-bit Node.js 22.13 or newer
 - pnpm 11 (`corepack enable && corepack prepare pnpm@11.25.0 --activate`)
 - A Cloudflare account for Worker/D1 deployment
 - A GitHub repository with Pages enabled for frontend hosting
