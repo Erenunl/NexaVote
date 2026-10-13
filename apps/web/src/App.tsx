@@ -1,0 +1,14 @@
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { Layout } from './components/Layout';
+import { AdminPage } from './pages/AdminPage';
+import { HomePage } from './pages/HomePage';
+import { JuryPage } from './pages/JuryPage';
+import { ParticipantsPage } from './pages/ParticipantsPage';
+import { ResultsPage } from './pages/ResultsPage';
+
+export default function App() {
+  return <BrowserRouter basename={import.meta.env.BASE_URL} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Routes><Route element={<Layout />}><Route index element={<HomePage />} /><Route path="participants" element={<ParticipantsPage />} /><Route path="jury" element={<JuryPage />} /><Route path="results" element={<ResultsPage />} /><Route path="admin" element={<AdminPage />} /><Route path="*" element={<NotFound />} /></Route></Routes></BrowserRouter>;
+}
+
+function NotFound() { return <section className="mx-auto grid min-h-[70vh] max-w-xl place-items-center px-5 text-center"><div><p className="eyebrow">404</p><h1 className="mt-3 font-display text-5xl font-bold">Lost in the green room</h1><p className="mt-4 text-slate-400">The page you requested does not exist.</p></div></section>; }
+

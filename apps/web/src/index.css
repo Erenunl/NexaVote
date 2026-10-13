@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root { color-scheme: dark; font-synthesis: none; }
+  html { @apply bg-ink scroll-smooth; }
+  body { @apply m-0 min-w-[320px] bg-ink text-white antialiased; }
+  * { scrollbar-color: rgba(108,99,255,.6) rgba(255,255,255,.04); }
+  ::selection { @apply bg-electric/50 text-white; }
+  button, a, input, select { @apply outline-none; }
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { @apply ring-2 ring-cyan ring-offset-2 ring-offset-ink; }
+}
+
+@layer components {
+  .glass { @apply border border-white/10 bg-white/[0.055] backdrop-blur-xl; }
+  .panel { @apply glass rounded-3xl shadow-glow; }
+  .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-electric to-[#956dff] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-electric/25 transition hover:-translate-y-0.5 hover:shadow-electric/40 disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-secondary { @apply inline-flex items-center justify-center gap-2 rounded-full border border-white/15 bg-white/[0.06] px-5 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50; }
+  .eyebrow { @apply text-xs font-bold uppercase tracking-[0.24em] text-cyan; }
+  .input { @apply w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3.5 text-white placeholder:text-slate-500 transition focus:border-electric/70 focus:bg-black/30; }
+  .status-dot { @apply inline-block h-2 w-2 rounded-full; }
+}
+
+.aurora::before,
+.aurora::after { content: ''; position: fixed; pointer-events: none; filter: blur(100px); opacity: .26; z-index: -1; }
+.aurora::before { width: 34rem; height: 34rem; left: -10rem; top: 8rem; background: #613cff; border-radius: 999px; }
+.aurora::after { width: 30rem; height: 30rem; right: -8rem; top: 24rem; background: #0589ba; border-radius: 999px; }
+.grid-mask { background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px); background-size: 42px 42px; mask-image: linear-gradient(to bottom, black, transparent 82%); }
+.text-gradient { background: linear-gradient(110deg, #fff 15%, #aeb8ff 50%, #5ce1ff 90%); background-clip: text; -webkit-text-fill-color: transparent; }
+.score-sheen { background: linear-gradient(115deg, rgba(255,255,255,.03), rgba(108,99,255,.15), rgba(40,215,255,.04)); }
+

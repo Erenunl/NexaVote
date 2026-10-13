@@ -1,0 +1,5 @@
+PASSWORD_PEPPER="replace-with-at-least-32-random-bytes"
+ADMIN_PASSWORD_HASH="pbkdf2$310000$base64-salt$base64-hash"
+BOT_API_KEY_ID="nexavision-discord-production"
+BOT_API_SECRET="replace-with-at-least-32-random-bytes"
+

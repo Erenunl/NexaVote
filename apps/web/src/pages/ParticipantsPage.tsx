@@ -1,0 +1,14 @@
+import { ExternalLink, Music2, Search } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { api } from '../lib/api';
+
+export type Participant = { id: string; countryId: string; code: string; country: string; flag: string; artist: string; songTitle: string; youtubeUrl?: string };
+
+export function ParticipantsPage() {
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [search, setSearch] = useState('');
+  useEffect(() => { api<{ participants: Participant[] }>('/api/public/participants').then((data) => setParticipants(data.participants)).catch(() => undefined); }, []);
+  const filtered = useMemo(() => participants.filter((entry) => `${entry.country} ${entry.artist} ${entry.songTitle}`.toLowerCase().includes(search.toLowerCase())), [participants, search]);
+  return <section className="mx-auto min-h-[75vh] max-w-7xl px-5 py-16 lg:px-8"><div className="flex flex-col justify-between gap-6 md:flex-row md:items-end"><div><p className="eyebrow">The class of 2026</p><h1 className="mt-3 font-display text-4xl font-bold tracking-[-.04em] sm:text-6xl">Meet the participants</h1><p className="mt-4 max-w-2xl text-slate-400">Every country, artist and song taking the Nexavision stage.</p></div><label className="relative block w-full md:max-w-sm"><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" /><input className="input pl-11" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search country, artist or song" /></label></div><div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{filtered.map((entry, index) => <article key={entry.id} className="group panel overflow-hidden p-1 transition duration-300 hover:-translate-y-1 hover:border-electric/30"><div className="score-sheen rounded-[1.35rem] p-5"><div className="flex items-start justify-between"><span className="text-5xl drop-shadow-xl">{entry.flag}</span><span className="font-display text-sm font-bold text-white/25">{String(index + 1).padStart(2, '0')}</span></div><div className="mt-10"><p className="text-sm font-semibold uppercase tracking-[.16em] text-cyan">{entry.country}</p><h2 className="mt-2 font-display text-2xl font-semibold">{entry.songTitle}</h2><p className="mt-1 text-slate-400">{entry.artist}</p></div><div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4"><span className="flex items-center gap-2 text-xs text-slate-500"><Music2 className="h-4 w-4" />Official entry</span>{entry.youtubeUrl && <a href={entry.youtubeUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm font-semibold text-white transition hover:text-cyan">Watch <ExternalLink className="h-4 w-4" /></a>}</div></div></article>)}</div>{participants.length === 0 && <div className="panel mt-12 p-10 text-center text-slate-400">Participant data will appear when the API is running.</div>}</section>;
+}
+

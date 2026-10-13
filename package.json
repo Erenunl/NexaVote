@@ -1,0 +1,25 @@
+{
+  "name": "nexavision",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "packageManager": "pnpm@11.25.0",
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev:web": "pnpm --filter @nexavision/web dev",
+    "dev:api": "pnpm --filter @nexavision/api dev",
+    "lint": "eslint apps scripts --max-warnings=0",
+    "build": "pnpm --filter @nexavision/api build && pnpm --filter @nexavision/web build",
+    "typecheck": "pnpm --filter @nexavision/api typecheck && pnpm --filter @nexavision/web typecheck",
+    "test": "pnpm --filter @nexavision/api test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+  },
+  "engines": { "node": ">=20" },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.1",
+    "globals": "^16.4.0",
+    "typescript-eslint": "^8.46.1"
+  }
+}
+
