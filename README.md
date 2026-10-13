@@ -132,6 +132,12 @@ The opening assets are `apps/web/public/results-opening.mp3` and the 12-second `
 
 For rehearsals, an organizer can use **Geri al** beside an already revealed jury. This removes only that jury's public reveal record—the submitted ballot remains intact—and puts the jury back in the selector. Revealing it again uses a new sequence number so connected result screens replay the animation.
 
+### Guest broadcast
+
+The live results controls include a **Konuk çağır** action that is independent from ballots, jury reveals, and totals. It fades the public results screen to black, shows **Sürpriz bir konuk geliyor!**, and then fades in `apps/web/public/guest-performance.mp4` with **NEXAVISION** centered at the top. While the guest broadcast is active, new jury reveals stay queued. **Konuğu durdur** fades both picture and sound out over 1.2 seconds, resets the video, and resumes the existing results flow without changing vote data.
+
+Guest broadcast state is stored server-side on the current edition, so all open results screens follow the same start/stop timestamp. The video player is kept mounted with `preload="auto"` to reduce startup buffering.
+
 ## Production checklist
 
 - Replace the D1 placeholder database ID.

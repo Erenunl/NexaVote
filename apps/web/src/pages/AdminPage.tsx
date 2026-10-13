@@ -1,9 +1,9 @@
-import { Activity, CheckCircle2, Download, Eye, EyeOff, KeyRound, LogOut, Radio, RefreshCcw, RotateCcw, Settings2, Shield, Users } from 'lucide-react';
+import { Activity, CheckCircle2, Download, Eye, EyeOff, KeyRound, LogOut, Play, Radio, RefreshCcw, RotateCcw, Settings2, Shield, Square, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { adminToken, api, apiUrl } from '../lib/api';
 
-type Edition = { id: string; name: string; slug: string; year: number; phase: string; resultsPublic: boolean; resultsOpenedAt?: string | null; publicStatusEnabled: boolean; revealCount: number; votingDeadline?: string };
+type Edition = { id: string; name: string; slug: string; year: number; phase: string; resultsPublic: boolean; resultsOpenedAt?: string | null; guestActive?: boolean; guestStartedAt?: string | null; publicStatusEnabled: boolean; revealCount: number; votingDeadline?: string };
 type Jury = { countryId: string; country: string; code: string; flag: string; discordUserId?: string; deliveryStatus?: string; credentialReady: number; status: string };
 type Dashboard = { edition: Edition | null; stats: { total: number; submitted: number; online: number; remaining: number } | null; juries: Jury[] };
 type Entry = { id: string; editionId: string; countryId: string; code: string; country: string; flag: string; artist: string; songTitle: string; youtubeUrl?: string; displayOrder: number };
@@ -137,12 +137,14 @@ function AdminResults({ token, edition, patchEdition }: { token: string; edition
           <option value="">Bir jüri seçin</option>
           {availableJuries.map((jury) => <option key={jury.countryId} value={jury.countryId}>{jury.flag} {jury.country}</option>)}
         </select>
-        <button className="btn-secondary mt-3 w-full" disabled={!edition.resultsPublic || openingRemaining > 0 || !selectedJuryId || busy} onClick={revealJury}><Radio className="h-4 w-4" />{openingRemaining > 0 ? `Açılış oynatılıyor · ${openingRemaining} sn` : busy ? 'Açıklanıyor…' : selectedJury ? `${selectedJury.country} oylarını açıkla` : 'Jüri oylarını açıkla'}</button>
+        <button className="btn-secondary mt-3 w-full" disabled={!edition.resultsPublic || edition.guestActive || openingRemaining > 0 || !selectedJuryId || busy} onClick={revealJury}><Radio className="h-4 w-4" />{edition.guestActive ? 'Konuk yayını sürüyor' : openingRemaining > 0 ? `Açılış oynatılıyor · ${openingRemaining} sn` : busy ? 'Açıklanıyor…' : selectedJury ? `${selectedJury.country} oylarını açıkla` : 'Jüri oylarını açıkla'}</button>
         {!edition.resultsPublic && <p className="mt-3 text-xs leading-5 text-orange">Önce sonuç ekranını açın; ardından seçtiğiniz jürinin puanları izleyicilere canlı aktarılır.</p>}
         {availableJuries.length === 0 && submittedJuries.length > 0 && <p className="mt-3 text-xs text-emerald-300">Gönderilen tüm jüri oyları açıklandı.</p>}
         {submittedJuries.length === 0 && <p className="mt-3 text-xs text-pink-50/50">Henüz oyunu gönderen jüri yok.</p>}
         {error && <p className="mt-3 text-xs text-rose-300">{error}</p>}
       </div>
+      <button className={`mt-5 w-full ${edition.guestActive ? 'btn-primary' : 'btn-secondary'}`} disabled={!edition.resultsPublic || openingRemaining > 0 || busy} onClick={() => patchEdition({ guestActive: !edition.guestActive })}>{edition.guestActive ? <Square className="h-4 w-4 fill-current" /> : <Play className="h-4 w-4 fill-current" />}{edition.guestActive ? 'Konuğu durdur' : 'Konuk çağır'}</button>
+      {!edition.resultsPublic && <p className="mt-2 text-xs leading-5 text-orange">Konuk yayını için önce sonuç ekranını açın.</p>}
       <div className="mt-6">
         <div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wider text-pink-50/50">Açıklama sırası</p><span className="text-xs text-pink-50/50">{revealedJuries.length}/{submittedJuries.length}</span></div>
         <div className="mt-3 space-y-2">{revealedJuries.map((jury) => <div key={jury.countryId} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.06] px-3 py-2 text-sm"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-pink/20 font-bold">{jury.revealOrder}</span><span className="min-w-0 flex-1 truncate">{jury.flag} {jury.country}</span><button type="button" title={`${jury.country} açıklamasını geri al`} aria-label={`${jury.country} açıklamasını geri al`} disabled={busy} onClick={() => removeReveal(jury)} className="flex shrink-0 items-center gap-1.5 rounded-lg border border-orange/20 bg-orange/10 px-2.5 py-1.5 text-xs font-bold text-orange transition hover:bg-orange/20 disabled:cursor-not-allowed disabled:opacity-40"><RotateCcw className="h-3.5 w-3.5" />Geri al</button></div>)}</div>

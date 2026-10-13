@@ -54,9 +54,10 @@ publicRoutes.get('/status', async (context) => {
 
 publicRoutes.get('/results', async (context) => {
   const edition = await context.env.DB.prepare(`
-    SELECT id, name, results_public AS resultsPublic, results_opened_at AS resultsOpenedAt
+    SELECT id, name, results_public AS resultsPublic, results_opened_at AS resultsOpenedAt,
+      guest_active AS guestActive, guest_started_at AS guestStartedAt
     FROM editions WHERE is_current = 1
-  `).first<{ id: string; name: string; resultsPublic: number; resultsOpenedAt: string | null }>();
+  `).first<{ id: string; name: string; resultsPublic: number; resultsOpenedAt: string | null; guestActive: number; guestStartedAt: string | null }>();
   if (!edition?.resultsPublic) return context.json({ error: { code: 'RESULTS_HIDDEN', message: 'Results have not been published.' } }, 404);
   const ballotCount = await context.env.DB.prepare('SELECT COUNT(*) AS count FROM ballots WHERE edition_id = ?').bind(edition.id).first<{ count: number }>();
   const rows = await context.env.DB.prepare(`
@@ -98,6 +99,6 @@ publicRoutes.get('/results', async (context) => {
     reveal.scores.push({ countryId: row.recipientCountryId, country: row.recipientCountry, flag: row.recipientFlag, points: row.points });
     return result;
   }, []);
-  return context.json({ edition: edition.name, resultsOpenedAt: edition.resultsOpenedAt, juriesRevealed: reveals.length, juriesSubmitted: ballotCount?.count ?? 0, scoreboard: rows.results, reveals });
+  return context.json({ edition: edition.name, resultsOpenedAt: edition.resultsOpenedAt, guestActive: Boolean(edition.guestActive), guestStartedAt: edition.guestStartedAt, juriesRevealed: reveals.length, juriesSubmitted: ballotCount?.count ?? 0, scoreboard: rows.results, reveals });
 });
 

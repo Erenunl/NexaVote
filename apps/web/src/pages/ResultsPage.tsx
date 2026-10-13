@@ -15,6 +15,8 @@ type JuryReveal = {
 type ResultsResponse = {
   edition: string;
   resultsOpenedAt: string | null;
+  guestActive: boolean;
+  guestStartedAt: string | null;
   juriesRevealed: number;
   juriesSubmitted: number;
   scoreboard: Result[];
@@ -26,6 +28,7 @@ type ActiveReveal = {
   score?: RevealScore;
   scoreIndex?: number;
 };
+type GuestPresentation = { startedAt: number; phase: 'entering' | 'playing' | 'exiting' };
 
 const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 const REVEAL_TIMING = {
@@ -41,8 +44,14 @@ const OPENING_TIMING = {
   videoAt: 14000,
   endAt: 26000,
 } as const;
+const GUEST_TIMING = {
+  titleAt: 900,
+  videoAt: 4500,
+  fadeDuration: 1200,
+} as const;
 const openingAudioUrl = `${import.meta.env.BASE_URL}results-opening.mp3`;
 const openingVideoUrl = `${import.meta.env.BASE_URL}results-opening.mp4`;
+const guestVideoUrl = `${import.meta.env.BASE_URL}guest-performance.mp4`;
 
 function addScore(scoreboard: Result[], score: RevealScore): Result[] {
   return scoreboard
@@ -60,6 +69,10 @@ export function ResultsPage() {
   const [audioReady, setAudioReady] = useState(false);
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
+  const [guestVideoReady, setGuestVideoReady] = useState(false);
+  const [guestAudioBlocked, setGuestAudioBlocked] = useState(false);
+  const [guestPresentation, setGuestPresentation] = useState<GuestPresentation | null>(null);
+  const [guestElapsed, setGuestElapsed] = useState<number | null>(null);
   const seenRevealOrder = useRef<number | null>(null);
   const revealQueue = useRef<JuryReveal[]>([]);
   const processingQueue = useRef(false);
@@ -70,9 +83,15 @@ export function ResultsPage() {
   const audioAttempted = useRef(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const guestVideoRef = useRef<HTMLVideoElement>(null);
+  const guestActive = useRef(false);
+  const guestRunId = useRef<string | null>(null);
+  const guestEnterTimer = useRef<number | null>(null);
+  const guestFadeTimer = useRef<number | null>(null);
+  const guestVolumeTimer = useRef<number | null>(null);
 
   const playRevealQueue = useCallback(async () => {
-    if (processingQueue.current || openingActive.current) return;
+    if (processingQueue.current || openingActive.current || guestActive.current) return;
     processingQueue.current = true;
     while (mounted.current && revealQueue.current.length > 0) {
       const reveal = revealQueue.current.shift();
@@ -108,6 +127,56 @@ export function ResultsPage() {
     setOpeningElapsed(Math.max(0, elapsed));
   }, []);
 
+  const updateGuestBroadcast = useCallback((active: boolean, startedAt: string | null) => {
+    const runId = active && startedAt ? startedAt : null;
+    if (runId) {
+      if (guestRunId.current === runId) return;
+      const parsedStartedAt = Date.parse(runId);
+      if (!Number.isFinite(parsedStartedAt)) return;
+      guestRunId.current = runId;
+      guestActive.current = true;
+      if (guestEnterTimer.current !== null) window.clearTimeout(guestEnterTimer.current);
+      if (guestFadeTimer.current !== null) window.clearTimeout(guestFadeTimer.current);
+      if (guestVolumeTimer.current !== null) window.clearInterval(guestVolumeTimer.current);
+      const video = guestVideoRef.current;
+      if (video) video.volume = 1;
+      setGuestAudioBlocked(false);
+      setGuestElapsed(Math.max(0, Date.now() - parsedStartedAt));
+      setGuestPresentation({ startedAt: parsedStartedAt, phase: 'entering' });
+      guestEnterTimer.current = window.setTimeout(() => {
+        setGuestPresentation((current) => current?.startedAt === parsedStartedAt ? { ...current, phase: 'playing' } : current);
+      }, 80);
+      return;
+    }
+    if (!guestActive.current && guestRunId.current === null) return;
+    guestRunId.current = null;
+    guestActive.current = false;
+    if (guestEnterTimer.current !== null) window.clearTimeout(guestEnterTimer.current);
+    setGuestPresentation((current) => current ? { ...current, phase: 'exiting' } : null);
+    const video = guestVideoRef.current;
+    const fadeStartedAt = performance.now();
+    const initialVolume = video?.volume ?? 1;
+    if (guestVolumeTimer.current !== null) window.clearInterval(guestVolumeTimer.current);
+    guestVolumeTimer.current = window.setInterval(() => {
+      if (!video) return;
+      const progress = Math.min(1, (performance.now() - fadeStartedAt) / GUEST_TIMING.fadeDuration);
+      video.volume = Math.max(0, initialVolume * (1 - progress));
+    }, 50);
+    if (guestFadeTimer.current !== null) window.clearTimeout(guestFadeTimer.current);
+    guestFadeTimer.current = window.setTimeout(() => {
+      if (guestVolumeTimer.current !== null) window.clearInterval(guestVolumeTimer.current);
+      if (video) {
+        video.pause();
+        video.currentTime = 0;
+        video.volume = 1;
+      }
+      setGuestPresentation(null);
+      setGuestElapsed(null);
+      setGuestAudioBlocked(false);
+      void playRevealQueue();
+    }, GUEST_TIMING.fadeDuration);
+  }, [playRevealQueue]);
+
   const refreshResults = useCallback(async () => {
     try {
       const data = await api<ResultsResponse>('/api/public/results');
@@ -116,6 +185,7 @@ export function ResultsPage() {
       setMeta({ edition: data.edition, juriesRevealed: data.juriesRevealed, juriesSubmitted: data.juriesSubmitted });
       latestServerScoreboard.current = data.scoreboard;
       beginOpening(data.resultsOpenedAt);
+      updateGuestBroadcast(data.guestActive, data.guestStartedAt);
       const newestOrder = data.reveals.at(-1)?.revealOrder ?? 0;
       if (seenRevealOrder.current === null) {
         seenRevealOrder.current = newestOrder;
@@ -141,9 +211,10 @@ export function ResultsPage() {
         setOpeningElapsed(null);
         audioRef.current?.pause();
         videoRef.current?.pause();
+        updateGuestBroadcast(false, null);
       }
     }
-  }, [beginOpening, playRevealQueue]);
+  }, [beginOpening, playRevealQueue, updateGuestBroadcast]);
 
   const prepareAudio = useCallback(async () => {
     const audio = audioRef.current;
@@ -156,6 +227,14 @@ export function ResultsPage() {
       audio.muted = false;
       setAudioReady(true);
       setAudioBlocked(false);
+      const guestVideo = guestVideoRef.current;
+      if (guestVideo && guestVideo.readyState > 0) {
+        guestVideo.muted = true;
+        await guestVideo.play();
+        guestVideo.pause();
+        guestVideo.currentTime = 0;
+        guestVideo.muted = false;
+      }
     } catch {
       audio.muted = false;
       setAudioBlocked(true);
@@ -176,6 +255,19 @@ export function ResultsPage() {
       setAudioBlocked(true);
     }
   }, [openingStartedAt]);
+
+  const enableGuestAudio = useCallback(async () => {
+    const video = guestVideoRef.current;
+    if (!video) return;
+    try {
+      video.muted = false;
+      video.volume = 1;
+      await video.play();
+      setGuestAudioBlocked(false);
+    } catch {
+      setGuestAudioBlocked(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (openingStartedAt === null) return;
@@ -224,12 +316,38 @@ export function ResultsPage() {
   }, [openingStartedAt, playRevealQueue, videoReady]);
 
   useEffect(() => {
+    if (!guestPresentation || guestPresentation.phase === 'exiting') return;
+    const video = guestVideoRef.current;
+    if (!video) return;
+    const synchronize = () => {
+      const elapsed = Math.max(0, Date.now() - guestPresentation.startedAt);
+      setGuestElapsed(elapsed);
+      if (elapsed < GUEST_TIMING.videoAt || video.readyState < 2) return;
+      const rawTargetTime = (elapsed - GUEST_TIMING.videoAt) / 1000;
+      const targetTime = Number.isFinite(video.duration) ? Math.min(rawTargetTime, Math.max(0, video.duration - 0.05)) : rawTargetTime;
+      if (!video.seeking && Math.abs(video.currentTime - targetTime) > 1.25) video.currentTime = targetTime;
+      if (video.paused && (!Number.isFinite(video.duration) || targetTime < video.duration - 0.05)) {
+        video.muted = false;
+        video.volume = 1;
+        void video.play().then(() => setGuestAudioBlocked(false)).catch(() => setGuestAudioBlocked(true));
+      }
+    };
+    synchronize();
+    const timer = window.setInterval(synchronize, 100);
+    return () => window.clearInterval(timer);
+  }, [guestPresentation]);
+
+  useEffect(() => {
     mounted.current = true;
     void refreshResults();
     const timer = window.setInterval(refreshResults, 1500);
     return () => {
       mounted.current = false;
       window.clearInterval(timer);
+      if (guestEnterTimer.current !== null) window.clearTimeout(guestEnterTimer.current);
+      if (guestFadeTimer.current !== null) window.clearTimeout(guestFadeTimer.current);
+      if (guestVolumeTimer.current !== null) window.clearInterval(guestVolumeTimer.current);
+      guestVideoRef.current?.pause();
     };
   }, [refreshResults]);
 
@@ -243,13 +361,22 @@ export function ResultsPage() {
       : openingElapsed < OPENING_TIMING.videoAt
         ? 'title'
         : 'video';
+  const guestStage = guestElapsed === null
+    ? null
+    : guestElapsed < GUEST_TIMING.titleAt
+      ? 'black'
+      : guestElapsed < GUEST_TIMING.videoAt
+        ? 'title'
+        : 'video';
+  const guestIsVisible = guestPresentation?.phase === 'playing';
   const openingAudio = <audio key="results-opening-audio" ref={audioRef} preload="auto" src={openingAudioUrl} />;
   const openingVideo = <video key="results-opening-video" ref={videoRef} className={`pointer-events-none fixed inset-0 z-[110] h-full w-full object-cover object-center transition-opacity duration-700 ${openingStage === 'video' && videoReady ? 'opacity-100' : 'opacity-0'}`} src={openingVideoUrl} muted playsInline preload="auto" aria-hidden="true" onLoadedData={() => setVideoReady(true)} onCanPlay={() => setVideoReady(true)} onPlaying={() => setVideoReady(true)} onError={() => setVideoReady(false)} />;
+  const guestVideo = <video key="guest-performance-video" ref={guestVideoRef} className={`pointer-events-none fixed inset-0 z-[130] h-full w-full object-cover object-center transition-opacity duration-1000 ${guestIsVisible && guestStage === 'video' && guestVideoReady ? 'opacity-100' : 'opacity-0'}`} src={guestVideoUrl} playsInline preload="auto" aria-hidden="true" onLoadedData={() => setGuestVideoReady(true)} onCanPlay={() => setGuestVideoReady(true)} onPlaying={() => setGuestVideoReady(true)} onError={() => setGuestVideoReady(false)} />;
 
-  if (hidden) return <>{openingAudio}{openingVideo}<section className="mx-auto grid min-h-[75vh] max-w-3xl place-items-center px-5 py-16"><div className="panel w-full overflow-hidden p-10 text-center"><div className="stage-orbit mx-auto grid h-28 w-28 place-items-center"><span className="relative z-10 grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-pink to-orange shadow-lg shadow-pink/30"><LockKeyhole /></span></div><p className="eyebrow mt-7">Büyük açıklama yaklaşıyor</p><h1 className="mt-3 font-display text-4xl font-black uppercase">Sonuçlar henüz gizli</h1><p className="mx-auto mt-4 max-w-md leading-7 text-pink-50/60">Organizatör sonuç ekranını açtığında bu sayfa kendiliğinden canlı yayına geçecek. Yenilemeniz gerekmez.</p><button className="btn-primary mx-auto mt-6" onClick={prepareAudio}>{audioReady ? 'Yayın sesi hazır' : 'Yayın sesini hazırla'}</button><div className="mt-5 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-softpink"><span className="status-dot animate-pulseSoft bg-softpink" /> Canlı bağlantı bekleniyor</div></div></section></>;
+  if (hidden) return <>{openingAudio}{openingVideo}{guestVideo}<section className="mx-auto grid min-h-[75vh] max-w-3xl place-items-center px-5 py-16"><div className="panel w-full overflow-hidden p-10 text-center"><div className="stage-orbit mx-auto grid h-28 w-28 place-items-center"><span className="relative z-10 grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-pink to-orange shadow-lg shadow-pink/30"><LockKeyhole /></span></div><p className="eyebrow mt-7">Büyük açıklama yaklaşıyor</p><h1 className="mt-3 font-display text-4xl font-black uppercase">Sonuçlar henüz gizli</h1><p className="mx-auto mt-4 max-w-md leading-7 text-pink-50/60">Organizatör sonuç ekranını açtığında bu sayfa kendiliğinden canlı yayına geçecek. Yenilemeniz gerekmez.</p><button className="btn-primary mx-auto mt-6" onClick={prepareAudio}>{audioReady ? 'Yayın sesi hazır' : 'Yayın sesini hazırla'}</button><div className="mt-5 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-softpink"><span className="status-dot animate-pulseSoft bg-softpink" /> Canlı bağlantı bekleniyor</div></div></section></>;
 
   return (
-    <>{openingAudio}{openingVideo}<section className="mx-auto min-h-[75vh] max-w-7xl px-5 py-14 lg:px-8">
+    <>{openingAudio}{openingVideo}{guestVideo}<section className="mx-auto min-h-[75vh] max-w-7xl px-5 py-14 lg:px-8">
       <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div><div className="broadcast-chip mb-4"><Radio className="h-3.5 w-3.5 text-orange" /> Canlı · Otomatik güncelleniyor</div><p className="eyebrow">Resmî sonuçlar</p><h1 className="mt-2 font-display text-5xl font-black uppercase tracking-[-.04em] sm:text-7xl">{meta?.edition || 'Nexavision'}</h1><p className="mt-3 text-pink-50/60">{meta?.juriesSubmitted} jüri oyununun {meta?.juriesRevealed} tanesi açıklandı</p></div>
         <button className="btn-secondary" onClick={() => document.documentElement.requestFullscreen?.()}><Expand className="h-4 w-4" />Sunum modu</button>
@@ -287,6 +414,11 @@ export function ResultsPage() {
         </div>}
         {audioBlocked && <button className="absolute bottom-8 left-1/2 z-20 -translate-x-1/2 rounded-full border border-white/30 bg-white/15 px-6 py-3 text-sm font-bold text-white backdrop-blur-xl" onClick={enableOpeningAudio}>Sesi aç</button>}
       </div>}
+
+      {guestPresentation && <div className={`pointer-events-none fixed inset-0 z-[120] bg-black transition-opacity duration-1000 ${guestIsVisible ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true" />}
+      {guestPresentation && guestStage === 'title' && <div className={`pointer-events-none fixed inset-0 z-[140] grid place-items-center px-6 text-center transition-opacity duration-1000 ${guestIsVisible ? 'opacity-100' : 'opacity-0'}`} role="status" aria-live="assertive"><p className="font-display text-4xl font-black uppercase tracking-[-.035em] text-white sm:text-6xl lg:text-7xl">Sürpriz bir konuk geliyor!</p></div>}
+      {guestPresentation && guestStage === 'video' && <div className={`pointer-events-none fixed inset-x-0 top-5 z-[140] text-center transition-opacity duration-1000 ${guestIsVisible ? 'opacity-100' : 'opacity-0'}`}><span className="font-display text-xl font-black tracking-[.45em] text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.8)] sm:text-3xl">NEXAVISION</span></div>}
+      {guestPresentation && guestAudioBlocked && <button className={`fixed bottom-8 left-1/2 z-[150] -translate-x-1/2 rounded-full border border-white/30 bg-white/15 px-6 py-3 text-sm font-bold text-white backdrop-blur-xl transition-opacity duration-500 ${guestIsVisible ? 'opacity-100' : 'opacity-0'}`} onClick={enableGuestAudio}>Konuk sesini aç</button>}
     </>
   );
 }
