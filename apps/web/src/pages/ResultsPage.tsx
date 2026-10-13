@@ -280,7 +280,7 @@ export function ResultsPage() {
           <span className="opening-word opening-word-by">BY</span>
           <span className="opening-word opening-word-music">MUSIC</span>
         </div>}
-        <video ref={videoRef} className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-700 ${openingStage === 'video' && videoReady ? 'opacity-100' : 'opacity-0'}`} src={openingVideoUrl} muted playsInline preload="auto" onCanPlay={() => setVideoReady(true)} onError={() => setVideoReady(false)} />
+        <video ref={videoRef} className={`absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-700 ${openingStage === 'video' && videoReady ? 'opacity-100' : 'opacity-0'}`} src={openingVideoUrl} muted playsInline preload="auto" onCanPlay={() => setVideoReady(true)} onError={() => setVideoReady(false)} />
         {openingStage === 'video' && !videoReady && <div className="results-opening-placeholder absolute inset-0 grid place-items-center">
           <div className="opening-beam opening-beam-one" /><div className="opening-beam opening-beam-two" /><div className="opening-beam opening-beam-three" />
           <div className="relative z-10 text-center"><p className="opening-placeholder-kicker">NEXAVISION</p><p className="opening-placeholder-title">BÜYÜK FİNAL<br />BAŞLIYOR</p></div>
