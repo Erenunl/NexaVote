@@ -16,7 +16,7 @@ The frontend and bot are independent clients of the same backend. Voting remains
 
 ## Security model
 
-- Jury passwords use PBKDF2-SHA256 with a unique salt and 310,000 iterations; a keyed lookup hash avoids scanning all records.
+- Jury passwords use PBKDF2-SHA256 with a unique salt and Cloudflare's supported 100,000-iteration limit; a keyed lookup hash avoids scanning all records.
 - Raw passwords are never persisted. Generated passwords are returned once.
 - Jury and admin sessions are random bearer tokens; only SHA-256 token hashes are stored.
 - Browser tokens live in `sessionStorage`, avoiding cross-origin/third-party-cookie failures.

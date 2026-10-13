@@ -1,4 +1,5 @@
 const encoder = new TextEncoder();
+const PBKDF2_ITERATIONS = 100_000;
 
 function toBase64Url(bytes: Uint8Array): string {
   let binary = '';
@@ -30,7 +31,7 @@ export async function passwordLookup(password: string, pepper: string): Promise<
   return hmacSha256(pepper, password.trim());
 }
 
-export async function hashPassword(password: string, iterations = 310_000): Promise<{ salt: string; hash: string; iterations: number }> {
+export async function hashPassword(password: string, iterations = PBKDF2_ITERATIONS): Promise<{ salt: string; hash: string; iterations: number }> {
   const saltBytes = crypto.getRandomValues(new Uint8Array(16));
   const material = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: saltBytes, iterations }, material, 256);
@@ -58,7 +59,9 @@ export async function verifyEncodedPassword(password: string, encoded: string): 
   const [algorithm, iterationsText, salt, hash] = encoded.split('$');
   if (algorithm !== 'pbkdf2' || !iterationsText || !salt || !hash) return false;
   const iterations = Number(iterationsText);
-  return Number.isSafeInteger(iterations) && iterations >= 100_000 && verifyPassword(password, salt, hash, iterations);
+  return Number.isSafeInteger(iterations)
+    && iterations === PBKDF2_ITERATIONS
+    && verifyPassword(password, salt, hash, iterations);
 }
 
 export async function encodePassword(password: string): Promise<string> {

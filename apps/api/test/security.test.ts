@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import app from '../src/index';
 import { validateBallot, mayExposeResults, canCreateSession, submissionPolicy, credentialVersionIsValid } from '../src/lib/ballot';
-import { hashPassword, verifyPassword } from '../src/lib/crypto';
+import { hashPassword, verifyEncodedPassword, verifyPassword } from '../src/lib/crypto';
 
 const eligible = new Set(['se', 'it', 'fr', 'no', 'ua', 'es', 'pt', 'fi', 'ch', 'nl', 'be']);
 const validScores = [12, 10, 8, 7, 6, 5, 4, 3, 2, 1].map((points, index) => ({ points, countryId: [...eligible][index + 1]! }));
@@ -12,6 +12,10 @@ describe('authentication and authorization', () => {
     expect(encoded.hash).not.toContain('strong-password');
     await expect(verifyPassword('NXV-a-strong-password', encoded.salt, encoded.hash, encoded.iterations)).resolves.toBe(true);
     await expect(verifyPassword('wrong-password', encoded.salt, encoded.hash, encoded.iterations)).resolves.toBe(false);
+  });
+
+  it('rejects PBKDF2 iteration counts unsupported by Cloudflare Workers', async () => {
+    await expect(verifyEncodedPassword('password', 'pbkdf2$310000$c2FsdA$aGFzaA')).resolves.toBe(false);
   });
 
   it('rejects protected routes without bearer authentication', async () => {
