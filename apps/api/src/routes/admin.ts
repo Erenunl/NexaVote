@@ -211,14 +211,31 @@ adminRoutes.post('/editions/:editionId/reveals/:countryId', async (context) => {
   const existing = await context.env.DB.prepare('SELECT reveal_order AS revealOrder FROM jury_reveals WHERE edition_id = ? AND jury_country_id = ?')
     .bind(editionId, countryId).first<{ revealOrder: number }>();
   if (existing) return context.json({ error: { code: 'JURY_ALREADY_REVEALED', message: 'This jury has already been revealed.' } }, 409);
+  const sequence = await context.env.DB.prepare(`UPDATE editions
+    SET reveal_count = MAX(reveal_count, COALESCE((SELECT MAX(reveal_order) FROM jury_reveals WHERE edition_id = ?), 0)) + 1,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? RETURNING reveal_count AS revealOrder`)
+    .bind(editionId, editionId).first<{ revealOrder: number }>();
+  if (!sequence) return context.json({ error: { code: 'EDITION_NOT_FOUND', message: 'Edition not found.' } }, 404);
   const id = crypto.randomUUID();
-  await context.env.DB.prepare(`INSERT INTO jury_reveals (id, edition_id, jury_country_id, reveal_order)
-    SELECT ?, ?, ?, COALESCE(MAX(reveal_order), 0) + 1 FROM jury_reveals WHERE edition_id = ?`)
-    .bind(id, editionId, countryId, editionId).run();
+  await context.env.DB.prepare('INSERT INTO jury_reveals (id, edition_id, jury_country_id, reveal_order) VALUES (?, ?, ?, ?)')
+    .bind(id, editionId, countryId, sequence.revealOrder).run();
   const reveal = await context.env.DB.prepare('SELECT reveal_order AS revealOrder, revealed_at AS revealedAt FROM jury_reveals WHERE id = ?')
     .bind(id).first();
   await audit(context.env.DB, 'admin', context.get('adminSessionId'), 'results.jury_revealed', 'country', countryId, editionId, reveal ?? {});
   return context.json({ revealed: true, ...reveal }, 201);
+});
+
+adminRoutes.delete('/editions/:editionId/reveals/:countryId', async (context) => {
+  const { editionId, countryId } = context.req.param();
+  const reveal = await context.env.DB.prepare(`SELECT reveal_order AS revealOrder, revealed_at AS revealedAt
+    FROM jury_reveals WHERE edition_id = ? AND jury_country_id = ?`)
+    .bind(editionId, countryId).first<{ revealOrder: number; revealedAt: string }>();
+  if (!reveal) return context.json({ error: { code: 'JURY_NOT_REVEALED', message: 'This jury has not been revealed.' } }, 404);
+  await context.env.DB.prepare('DELETE FROM jury_reveals WHERE edition_id = ? AND jury_country_id = ?')
+    .bind(editionId, countryId).run();
+  await audit(context.env.DB, 'admin', context.get('adminSessionId'), 'results.jury_reveal_removed', 'country', countryId, editionId, reveal);
+  return context.json({ removed: true });
 });
 
 adminRoutes.get('/export', async (context) => {

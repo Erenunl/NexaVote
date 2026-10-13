@@ -1,4 +1,4 @@
-import { Activity, CheckCircle2, Download, Eye, EyeOff, KeyRound, LogOut, Radio, RefreshCcw, Settings2, Shield, Users } from 'lucide-react';
+import { Activity, CheckCircle2, Download, Eye, EyeOff, KeyRound, LogOut, Radio, RefreshCcw, RotateCcw, Settings2, Shield, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { adminToken, api, apiUrl } from '../lib/api';
@@ -102,6 +102,20 @@ function AdminResults({ token, edition, patchEdition }: { token: string; edition
       setBusy(false);
     }
   };
+  const removeReveal = async (jury: SubmittedJury) => {
+    if (!window.confirm(`${jury.country} jürisinin açıklaması geri alınsın mı? Oy pusulası korunacak.`)) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/api/admin/editions/${edition.id}/reveals/${jury.countryId}`, { method: 'DELETE', token });
+      setSelectedJuryId(jury.countryId);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Jüri açıklaması geri alınamadı.');
+    } finally {
+      setBusy(false);
+    }
+  };
   const juries = [...new Set(breakdown.map((vote) => vote.juryCountry))];
   const revealedJuries = submittedJuries.filter((jury) => jury.revealOrder != null).sort((a, b) => Number(a.revealOrder) - Number(b.revealOrder));
   const availableJuries = submittedJuries.filter((jury) => jury.revealOrder == null);
@@ -131,7 +145,7 @@ function AdminResults({ token, edition, patchEdition }: { token: string; edition
       </div>
       <div className="mt-6">
         <div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wider text-pink-50/50">Açıklama sırası</p><span className="text-xs text-pink-50/50">{revealedJuries.length}/{submittedJuries.length}</span></div>
-        <div className="mt-3 space-y-2">{revealedJuries.map((jury) => <div key={jury.countryId} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.06] px-3 py-2 text-sm"><span className="grid h-7 w-7 place-items-center rounded-lg bg-pink/20 font-bold">{jury.revealOrder}</span><span>{jury.flag} {jury.country}</span></div>)}</div>
+        <div className="mt-3 space-y-2">{revealedJuries.map((jury) => <div key={jury.countryId} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.06] px-3 py-2 text-sm"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-pink/20 font-bold">{jury.revealOrder}</span><span className="min-w-0 flex-1 truncate">{jury.flag} {jury.country}</span><button type="button" title={`${jury.country} açıklamasını geri al`} aria-label={`${jury.country} açıklamasını geri al`} disabled={busy} onClick={() => removeReveal(jury)} className="flex shrink-0 items-center gap-1.5 rounded-lg border border-orange/20 bg-orange/10 px-2.5 py-1.5 text-xs font-bold text-orange transition hover:bg-orange/20 disabled:cursor-not-allowed disabled:opacity-40"><RotateCcw className="h-3.5 w-3.5" />Geri al</button></div>)}</div>
       </div>
       <div className="mt-6 grid grid-cols-2 gap-2"><button className="btn-secondary px-3" onClick={() => download('csv')}><Download className="h-4 w-4" />CSV</button><button className="btn-secondary px-3" onClick={() => download('json')}><Download className="h-4 w-4" />JSON</button></div>
     </aside>
@@ -152,6 +166,7 @@ const auditActionLabels: Record<string, string> = {
   'ballot.reset': 'Oy pusulası sıfırlandı',
   'ballot.submitted': 'Oy pusulası gönderildi',
   'results.jury_revealed': 'Jüri oyları canlı sonuçlarda açıklandı',
+  'results.jury_reveal_removed': 'Jüri açıklaması geri alındı',
 };
 
 function AuditLog({ token }: { token: string }) { const [events, setEvents] = useState<AuditEvent[]>([]); useEffect(() => { api<{ events: AuditEvent[] }>('/api/admin/audit-log', { token }).then((data) => setEvents(data.events)); }, [token]); return <div className="panel mt-6 overflow-hidden"><div className="border-b border-white/[.07] p-5"><h2 className="font-display text-xl font-semibold">Güvenlik ve işlem kayıtları</h2></div><div className="divide-y divide-white/[.06]">{events.map((event) => <div key={event.id} className="grid gap-2 p-4 text-sm sm:grid-cols-[180px_1fr_120px]"><span className="text-slate-500">{new Date(event.createdAt).toLocaleString('tr-TR')}</span><span className="font-medium">{auditActionLabels[event.action] || event.action}</span><span className="text-right text-slate-500">{event.actorType === 'admin' ? 'Yönetici' : event.actorType === 'jury' ? 'Jüri' : event.actorType === 'integration' ? 'Entegrasyon' : event.actorType}</span></div>)}</div></div>; }

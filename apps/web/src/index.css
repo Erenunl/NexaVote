@@ -73,13 +73,13 @@
 .jury-reveal-intro { animation: juryRevealIntro 1.9s ease both; filter: drop-shadow(0 24px 65px rgba(229,0,164,.48)); }
 .jury-point-card { background: linear-gradient(115deg, rgba(72,17,100,.96), rgba(128,33,185,.96) 48%, rgba(229,0,164,.94)); border-color: rgba(255,255,255,.35); box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 18px 60px rgba(31,2,38,.7), 0 0 42px rgba(229,0,164,.32); backdrop-filter: blur(22px); animation: juryPointIn .38s cubic-bezier(.2,.8,.2,1) both; }
 .jury-point-card-twelve { background: linear-gradient(115deg, #ff682d, #f63d58 42%, #e500a4); box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 18px 65px rgba(255,104,45,.46), 0 0 55px rgba(229,0,164,.42); }
-.results-opening { isolation: isolate; }
-.results-opening-stars { background-color: #010303; background-image: radial-gradient(circle at 12% 19%, rgba(255,255,255,.95) 0 1px, transparent 1.7px), radial-gradient(circle at 71% 31%, rgba(255,255,255,.8) 0 1px, transparent 1.5px), radial-gradient(circle at 42% 76%, rgba(255,255,255,.72) 0 1px, transparent 1.6px), radial-gradient(circle at 88% 82%, rgba(255,255,255,.88) 0 1px, transparent 1.6px); background-size: 97px 89px, 131px 117px, 79px 103px, 151px 137px; animation: openingStars 7s ease both; }
+.results-opening { isolation: isolate; animation: openingFadeToBlack 1.35s ease-out both; }
+.results-opening-stars { background-color: #010303; animation: openingStars 7s ease both; }
 .results-opening-stars::before { content: ''; position: absolute; inset: -20%; background: radial-gradient(ellipse at 25% 95%, rgba(33,164,111,.52), transparent 40%), radial-gradient(ellipse at 72% 5%, rgba(255,191,69,.2), transparent 35%), radial-gradient(ellipse at 56% 42%, rgba(39,105,83,.25), transparent 38%); filter: blur(28px); animation: openingAurora 8s ease-in-out infinite alternate; }
 .results-opening-title { pointer-events: none; animation: openingTitleStage 5s ease both; }
-.opening-word { position: absolute; display: block; font-family: Arial, Helvetica, sans-serif; font-weight: 300; line-height: .78; letter-spacing: -.075em; color: transparent; background: linear-gradient(105deg, #ffe018 4%, #ffb42e 27%, #ff7e73 52%, #ff3fad 76%, #e500a4 100%); background-size: 220% 100%; background-clip: text; -webkit-background-clip: text; filter: drop-shadow(0 0 28px rgba(255,63,173,.22)); animation: openingWordIn .9s cubic-bezier(.2,.75,.2,1) both, openingColor 2.4s linear infinite alternate; }
+.opening-word { position: absolute; display: block; font-family: Arial, Helvetica, sans-serif; font-weight: 300; line-height: .78; letter-spacing: -.075em; color: transparent; background: linear-gradient(90deg, #ff7a2f 0%, #ffb23f 18%, #ff6a73 36%, #ff35ad 54%, #e500a4 70%, #ff5f78 86%, #ff7a2f 100%); background-size: 300% 100%; background-clip: text; -webkit-background-clip: text; filter: drop-shadow(0 0 28px rgba(255,63,173,.22)); animation: openingWordIn .9s cubic-bezier(.2,.75,.2,1) both, openingColor 1.6s linear infinite; }
 .opening-word-united { left: 1.5vw; top: 4vh; font-size: clamp(4.5rem, 15vw, 14rem); }
-.opening-word-by { right: -1vw; top: 35vh; font-size: clamp(4.5rem, 13vw, 12rem); animation-delay: .12s, 0s; }
+.opening-word-by { right: .25vw; top: 35vh; font-size: clamp(4.5rem, 13vw, 12rem); animation-delay: .12s, 0s; }
 .opening-word-music { left: 20vw; bottom: 4vh; font-size: clamp(5rem, 15vw, 14rem); animation-delay: .24s, 0s; }
 .results-opening-placeholder { background: radial-gradient(circle at 50% 45%, rgba(229,0,164,.22), transparent 26%), #000; animation: openingVideoIn .65s ease both; }
 .opening-placeholder-kicker { font-size: clamp(.75rem, 1.4vw, 1.2rem); font-weight: 900; letter-spacing: .62em; color: rgba(255,255,255,.56); }
@@ -97,10 +97,11 @@ table tbody tr:hover { background-color: rgba(255,63,173,.08); }
 @keyframes juryRevealIntro { 0% { opacity: 0; transform: scale(.82) translateY(28px); } 22%, 78% { opacity: 1; transform: scale(1) translateY(0); } 100% { opacity: 0; transform: scale(1.08); } }
 @keyframes juryPointIn { from { opacity: 0; transform: translateY(-22px) scale(.94); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes openingStars { from { opacity: 0; transform: scale(1.08); } to { opacity: 1; transform: scale(1); } }
+@keyframes openingFadeToBlack { from { opacity: 0; } to { opacity: 1; } }
 @keyframes openingAurora { to { transform: translate3d(4vw, -2vh, 0) rotate(4deg) scale(1.06); } }
 @keyframes openingTitleStage { 0% { opacity: 0; } 14%, 82% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes openingWordIn { from { opacity: 0; transform: translate3d(0, 32px, 0) scale(.96); filter: blur(12px); } to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); } }
-@keyframes openingColor { to { background-position: 100% 0; } }
+@keyframes openingColor { from { background-position: 0% 50%; } to { background-position: 300% 50%; } }
 @keyframes openingVideoIn { from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: scale(1); } }
 @keyframes openingBeamOne { to { transform: translate(-50%, -8%) rotate(55deg) scaleX(1.35); } }
 @keyframes openingBeamTwo { to { transform: translate(-50%, -8%) rotate(-52deg) scaleX(.8); } }

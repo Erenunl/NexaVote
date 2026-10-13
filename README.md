@@ -130,6 +130,8 @@ Opening the public results screen starts one synchronized 24-second presentation
 
 The audio asset is `apps/web/public/results-opening.mp3`. The future 12-second opening video must be saved as `apps/web/public/results-opening.mp4`; until it is added, the site shows the built-in Nexavision motion placeholder. Viewers can press **Yayın sesini hazırla** while waiting so browsers permit synchronized sound playback.
 
+For rehearsals, an organizer can use **Geri al** beside an already revealed jury. This removes only that jury's public reveal record—the submitted ballot remains intact—and puts the jury back in the selector. Revealing it again uses a new sequence number so connected result screens replay the animation.
+
 ## Production checklist
 
 - Replace the D1 placeholder database ID.
