@@ -36,7 +36,7 @@ const REVEAL_TIMING = {
 } as const;
 const OPENING_TIMING = {
   audioStartSeconds: 4,
-  titleAt: 7000,
+  titleAt: 8000,
   titleEndAt: 14000,
   videoAt: 14000,
   endAt: 26000,
@@ -214,7 +214,7 @@ export function ResultsPage() {
       const video = videoRef.current;
       if (video && videoReady && elapsed >= OPENING_TIMING.videoAt) {
         const targetTime = (elapsed - OPENING_TIMING.videoAt) / 1000;
-        if (Math.abs(video.currentTime - targetTime) > 0.45) video.currentTime = targetTime;
+        if (!video.seeking && video.readyState >= 2 && Math.abs(video.currentTime - targetTime) > 1.25) video.currentTime = targetTime;
         if (video.paused) void video.play().catch(() => undefined);
       }
     };
@@ -244,11 +244,12 @@ export function ResultsPage() {
         ? 'title'
         : 'video';
   const openingAudio = <audio key="results-opening-audio" ref={audioRef} preload="auto" src={openingAudioUrl} />;
+  const openingVideo = <video key="results-opening-video" ref={videoRef} className={`pointer-events-none fixed inset-0 z-[110] h-full w-full object-cover object-center transition-opacity duration-700 ${openingStage === 'video' && videoReady ? 'opacity-100' : 'opacity-0'}`} src={openingVideoUrl} muted playsInline preload="auto" aria-hidden="true" onLoadedData={() => setVideoReady(true)} onCanPlay={() => setVideoReady(true)} onPlaying={() => setVideoReady(true)} onError={() => setVideoReady(false)} />;
 
-  if (hidden) return <>{openingAudio}<section className="mx-auto grid min-h-[75vh] max-w-3xl place-items-center px-5 py-16"><div className="panel w-full overflow-hidden p-10 text-center"><div className="stage-orbit mx-auto grid h-28 w-28 place-items-center"><span className="relative z-10 grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-pink to-orange shadow-lg shadow-pink/30"><LockKeyhole /></span></div><p className="eyebrow mt-7">Büyük açıklama yaklaşıyor</p><h1 className="mt-3 font-display text-4xl font-black uppercase">Sonuçlar henüz gizli</h1><p className="mx-auto mt-4 max-w-md leading-7 text-pink-50/60">Organizatör sonuç ekranını açtığında bu sayfa kendiliğinden canlı yayına geçecek. Yenilemeniz gerekmez.</p><button className="btn-primary mx-auto mt-6" onClick={prepareAudio}>{audioReady ? 'Yayın sesi hazır' : 'Yayın sesini hazırla'}</button><div className="mt-5 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-softpink"><span className="status-dot animate-pulseSoft bg-softpink" /> Canlı bağlantı bekleniyor</div></div></section></>;
+  if (hidden) return <>{openingAudio}{openingVideo}<section className="mx-auto grid min-h-[75vh] max-w-3xl place-items-center px-5 py-16"><div className="panel w-full overflow-hidden p-10 text-center"><div className="stage-orbit mx-auto grid h-28 w-28 place-items-center"><span className="relative z-10 grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-pink to-orange shadow-lg shadow-pink/30"><LockKeyhole /></span></div><p className="eyebrow mt-7">Büyük açıklama yaklaşıyor</p><h1 className="mt-3 font-display text-4xl font-black uppercase">Sonuçlar henüz gizli</h1><p className="mx-auto mt-4 max-w-md leading-7 text-pink-50/60">Organizatör sonuç ekranını açtığında bu sayfa kendiliğinden canlı yayına geçecek. Yenilemeniz gerekmez.</p><button className="btn-primary mx-auto mt-6" onClick={prepareAudio}>{audioReady ? 'Yayın sesi hazır' : 'Yayın sesini hazırla'}</button><div className="mt-5 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-softpink"><span className="status-dot animate-pulseSoft bg-softpink" /> Canlı bağlantı bekleniyor</div></div></section></>;
 
   return (
-    <>{openingAudio}<section className="mx-auto min-h-[75vh] max-w-7xl px-5 py-14 lg:px-8">
+    <>{openingAudio}{openingVideo}<section className="mx-auto min-h-[75vh] max-w-7xl px-5 py-14 lg:px-8">
       <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div><div className="broadcast-chip mb-4"><Radio className="h-3.5 w-3.5 text-orange" /> Canlı · Otomatik güncelleniyor</div><p className="eyebrow">Resmî sonuçlar</p><h1 className="mt-2 font-display text-5xl font-black uppercase tracking-[-.04em] sm:text-7xl">{meta?.edition || 'Nexavision'}</h1><p className="mt-3 text-pink-50/60">{meta?.juriesSubmitted} jüri oyununun {meta?.juriesRevealed} tanesi açıklandı</p></div>
         <button className="btn-secondary" onClick={() => document.documentElement.requestFullscreen?.()}><Expand className="h-4 w-4" />Sunum modu</button>
@@ -280,7 +281,6 @@ export function ResultsPage() {
           <span className="opening-word opening-word-by">BY</span>
           <span className="opening-word opening-word-music">MUSIC</span>
         </div>}
-        <video ref={videoRef} className={`absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-700 ${openingStage === 'video' && videoReady ? 'opacity-100' : 'opacity-0'}`} src={openingVideoUrl} muted playsInline preload="auto" onCanPlay={() => setVideoReady(true)} onError={() => setVideoReady(false)} />
         {openingStage === 'video' && !videoReady && <div className="results-opening-placeholder absolute inset-0 grid place-items-center">
           <div className="opening-beam opening-beam-one" /><div className="opening-beam opening-beam-two" /><div className="opening-beam opening-beam-three" />
           <div className="relative z-10 text-center"><p className="opening-placeholder-kicker">NEXAVISION</p><p className="opening-placeholder-title">BÜYÜK FİNAL<br />BAŞLIYOR</p></div>

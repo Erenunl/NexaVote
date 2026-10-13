@@ -124,11 +124,11 @@ Reveal order is stored per edition and never changes ballot data. The selector e
 Opening the public results screen starts one synchronized 26-second presentation for every connected viewer:
 
 - the supplied music begins from its 4-second mark;
-- **UNITED BY MUSIC** appears when the audio reaches 11 seconds and remains visible by itself until the video begins;
+- **UNITED BY MUSIC** appears when the audio reaches 12 seconds and remains visible by itself until the video begins;
 - the opening video begins when the audio reaches 18 seconds;
 - music and video stop at the audio's 30-second mark, then the empty scoreboard is shown.
 
-The opening assets are `apps/web/public/results-opening.mp3` and the 12-second `apps/web/public/results-opening.mp4`. The video begins after the five-second **UNITED BY MUSIC** title card and is synchronized from the shared server timestamp. Viewers can press **Yayın sesini hazırla** while waiting so browsers permit synchronized sound playback.
+The opening assets are `apps/web/public/results-opening.mp3` and the 12-second `apps/web/public/results-opening.mp4`. The video begins after the **UNITED BY MUSIC** title card and is synchronized from the shared server timestamp. Its persistent player preloads while results are hidden, and drift correction avoids seeking during ordinary playback so slower connections do not cause repeated stalls. Viewers can press **Yayın sesini hazırla** while waiting so browsers permit synchronized sound playback.
 
 For rehearsals, an organizer can use **Geri al** beside an already revealed jury. This removes only that jury's public reveal record—the submitted ballot remains intact—and puts the jury back in the selector. Revealing it again uses a new sequence number so connected result screens replay the animation.
 
