@@ -36,10 +36,10 @@ const REVEAL_TIMING = {
 } as const;
 const OPENING_TIMING = {
   audioStartSeconds: 4,
-  titleAt: 5000,
-  titleEndAt: 10000,
-  videoAt: 10000,
-  endAt: 22000,
+  titleAt: 9000,
+  titleEndAt: 14000,
+  videoAt: 14000,
+  endAt: 26000,
 } as const;
 const openingAudioUrl = `${import.meta.env.BASE_URL}results-opening.mp3`;
 const openingVideoUrl = `${import.meta.env.BASE_URL}results-opening.mp4`;
