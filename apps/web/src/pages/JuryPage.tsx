@@ -16,7 +16,7 @@ export function JuryPage() {
     setLoading(true);
     api<JuryMe>('/api/jury/me', { token }).then(setMe).catch(() => { juryToken.clear(); setToken(null); }).finally(() => setLoading(false));
   }, [token]);
-  if (loading) return <PageShell><div className="panel mx-auto max-w-lg p-10 text-center text-pink-50/60">Opening the jury room…</div></PageShell>;
+  if (loading) return <PageShell><div className="panel mx-auto max-w-lg p-10 text-center text-pink-50/60">Jüri odası açılıyor…</div></PageShell>;
   if (!token || !me) return <Login onSuccess={(newToken, jury) => { juryToken.set(newToken); setToken(newToken); setMe({ jury, edition: { name: 'Nexavision', phase: 'open' }, submitted: false }); }} />;
   return <VotingRoom token={token} me={me} onLogout={() => { juryToken.clear(); setToken(null); setMe(null); }} />;
 }
@@ -28,26 +28,26 @@ function Login({ onSuccess }: { onSuccess: (token: string, jury: JuryMe['jury'])
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError('');
     try { const result = await api<{ token: string; jury: JuryMe['jury'] }>('/api/jury/login', { method: 'POST', body: JSON.stringify({ password }) }); onSuccess(result.token, result.jury); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to sign in.'); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : 'Giriş yapılamadı.'); }
     finally { setBusy(false); }
   };
   return (
     <PageShell>
       <div className="mx-auto max-w-5xl">
-        <div className="mb-8 text-center"><p className="font-display text-2xl font-black tracking-[.2em] text-white">NEXA<span className="text-softpink">VISION</span></p><p className="mt-2 text-xs font-black uppercase tracking-[.35em] text-orange">Jury Voting Portal</p></div>
+        <div className="mb-8 text-center"><p className="font-display text-2xl font-black tracking-[.2em] text-white">NEXA<span className="text-softpink">VISION</span></p><p className="mt-2 text-xs font-black uppercase tracking-[.35em] text-orange">Jüri Oylama Portalı</p></div>
         <div className="panel grid overflow-hidden lg:grid-cols-[.95fr_1.05fr]">
           <div className="relative flex min-h-[420px] flex-col justify-between overflow-hidden bg-gradient-to-br from-electric via-violet to-orange p-8 sm:p-11">
             <div className="absolute -right-24 -top-24 h-80 w-80 rounded-full border-[55px] border-white/10" />
             <div className="absolute -bottom-32 -left-24 h-80 w-80 rounded-full border-[42px] border-softpink/20" />
-            <div className="relative"><span className="grid h-14 w-14 place-items-center rounded-2xl border border-white/30 bg-white/15 backdrop-blur-lg"><Star className="fill-white" /></span><p className="eyebrow mt-8 !text-white/70">Official jury access</p><h1 className="mt-3 font-display text-5xl font-black uppercase leading-[.92] tracking-[-.045em]">Your country.<br />Your twelve points.</h1></div>
-            <div className="relative mt-10 flex items-center gap-3 text-sm font-semibold text-white/80"><ShieldCheck className="h-5 w-5" />Encrypted, single-session access</div>
+            <div className="relative"><span className="grid h-14 w-14 place-items-center rounded-2xl border border-white/30 bg-white/15 backdrop-blur-lg"><Star className="fill-white" /></span><p className="eyebrow mt-8 !text-white/70">Resmî jüri girişi</p><h1 className="mt-3 font-display text-5xl font-black uppercase leading-[.92] tracking-[-.045em]">Senin ülken.<br />Senin on iki puanın.</h1></div>
+            <div className="relative mt-10 flex items-center gap-3 text-sm font-semibold text-white/80"><ShieldCheck className="h-5 w-5" />Şifreli, tek oturumlu erişim</div>
           </div>
           <form onSubmit={submit} className="relative p-8 sm:p-11">
             <div className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-pink to-orange shadow-lg shadow-pink/30"><KeyRound /></div>
-            <h2 className="mt-7 font-display text-3xl font-black uppercase">Enter the jury room</h2><p className="mt-2 text-sm text-pink-50/55">Use the private password sent by your organizer. No username is needed.</p>
-            <label className="mt-8 block text-sm font-bold text-pink-50/80">Jury access password<input autoFocus type="password" className="input mt-2" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your private password" autoComplete="current-password" /></label>
+            <h2 className="mt-7 font-display text-3xl font-black uppercase">Jüri odasına gir</h2><p className="mt-2 text-sm text-pink-50/55">Organizatörünüzün gönderdiği özel şifreyi kullanın. Kullanıcı adı gerekmez.</p>
+            <label className="mt-8 block text-sm font-bold text-pink-50/80">Jüri erişim şifresi<input autoFocus type="password" className="input mt-2" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Özel şifrenizi girin" autoComplete="current-password" /></label>
             {error && <p className="mt-4 rounded-xl border border-coral/30 bg-coral/15 px-4 py-3 text-sm text-pink-50">{error}</p>}
-            <button className="btn-primary mt-6 w-full" disabled={busy || !password}>{busy ? 'Verifying…' : 'Continue to voting'} <ChevronRight className="h-4 w-4" /></button>
+            <button className="btn-primary mt-6 w-full" disabled={busy || !password}>{busy ? 'Doğrulanıyor…' : 'Oylamaya devam et'} <ChevronRight className="h-4 w-4" /></button>
           </form>
         </div>
       </div>
@@ -74,7 +74,7 @@ function VotingRoom({ token, me, onLogout }: { token: string; me: JuryMe; onLogo
   const submit = async () => {
     setBusy(true); setError('');
     try { await api('/api/jury/ballot', { method: 'POST', token, body: JSON.stringify({ scores: points.map((score) => ({ points: score, countryId: selections[score] })) }) }); setSubmitted(true); setConfirming(false); const data = await api<{ submittedScores: SubmittedScore[]; participants: Participant[] }>('/api/jury/ballot', { token }); setSubmittedScores(data.submittedScores); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to submit your ballot.'); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : 'Oy pusulanız gönderilemedi.'); }
     finally { setBusy(false); }
   };
   const logout = async () => { await api('/api/jury/logout', { method: 'POST', token }).catch(() => undefined); onLogout(); };
@@ -82,26 +82,26 @@ function VotingRoom({ token, me, onLogout }: { token: string; me: JuryMe; onLogo
   if (submitted) return (
     <PageShell><div className="mx-auto max-w-3xl"><div className="panel overflow-hidden p-7 sm:p-10">
       <div className="stage-orbit mx-auto grid h-28 w-28 place-items-center"><span className="relative z-10 grid h-20 w-20 place-items-center rounded-full bg-gradient-to-br from-pink to-orange shadow-xl shadow-pink/30"><Check className="h-10 w-10" /></span></div>
-      <div className="mt-6 text-center"><p className="eyebrow">Ballot received</p><h1 className="mt-3 font-display text-4xl font-black uppercase">Thank you, Jury of {me.jury.country}</h1><p className="mt-3 text-pink-50/55">Your vote is locked and safely recorded.</p></div>
+      <div className="mt-6 text-center"><p className="eyebrow">Oy pusulası alındı</p><h1 className="mt-3 font-display text-4xl font-black uppercase">Teşekkürler, {me.jury.country} Jürisi</h1><p className="mt-3 text-pink-50/55">Oyunuz kilitlendi ve güvenle kaydedildi.</p></div>
       <div className="mt-9 space-y-2">{submittedScores.map((score, index) => <div key={score.points} className={`point-ribbon reveal-row flex items-center rounded-xl border border-white/20 p-3 ${score.points === 12 ? 'point-ribbon-twelve' : ''}`} style={{ animationDelay: `${index * 55}ms` }}><span className="grid h-11 w-11 place-items-center rounded-lg border border-white/25 bg-purple/35 font-display text-lg font-black">{score.points}</span><span className="ml-4 text-2xl">{score.flag}</span><span className="ml-3 font-bold">{score.country}</span></div>)}</div>
-      <button className="btn-secondary mt-8 w-full" onClick={logout}><LogOut className="h-4 w-4" />Sign out</button>
+      <button className="btn-secondary mt-8 w-full" onClick={logout}><LogOut className="h-4 w-4" />Çıkış yap</button>
     </div></div></PageShell>
   );
 
   return (
     <PageShell wide>
-      <div className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end"><div><p className="eyebrow">{me.edition.name} · Official jury</p><h1 className="mt-3 font-display text-4xl font-black uppercase sm:text-5xl">{me.jury.flag} Jury of {me.jury.country}</h1><p className="mt-3 text-pink-50/60">Award every point value to a different country. You cannot vote for yourself.</p></div><button className="btn-secondary self-start" onClick={logout}><LogOut className="h-4 w-4" />Sign out</button></div>
+      <div className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end"><div><p className="eyebrow">{me.edition.name} · Resmî jüri</p><h1 className="mt-3 font-display text-4xl font-black uppercase sm:text-5xl">{me.jury.flag} {me.jury.country} Jürisi</h1><p className="mt-3 text-pink-50/60">Her puan değerini farklı bir ülkeye verin. Kendi ülkenize oy veremezsiniz.</p></div><button className="btn-secondary self-start" onClick={logout}><LogOut className="h-4 w-4" />Çıkış yap</button></div>
       {error && <p className="mb-5 rounded-xl border border-coral/30 bg-coral/15 p-4 text-pink-50">{error}</p>}
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="panel p-4 sm:p-6"><div className="space-y-3">{points.map((score, index) => (
           <div key={score} className={`point-ribbon reveal-row grid items-center gap-3 rounded-2xl border border-white/20 p-3 sm:grid-cols-[64px_1fr] ${score === 12 ? 'point-ribbon-twelve' : ''}`} style={{ animationDelay: `${index * 35}ms` }}>
             <div className="grid h-14 w-14 place-items-center rounded-xl border border-white/25 bg-purple/35 font-display text-2xl font-black">{score}</div>
-            <select aria-label={`Recipient of ${score} points`} className="input bg-purple/35" value={selections[score] || ''} onChange={(event) => select(score, event.target.value)}><option value="">Select a country</option>{participants.map((entry) => <option key={entry.countryId} value={entry.countryId} disabled={selectedCountries.has(entry.countryId) && selections[score] !== entry.countryId}>{entry.flag} {entry.country} — {entry.songTitle}</option>)}</select>
+            <select aria-label={`${score} puanın verileceği ülke`} className="input bg-purple/35" value={selections[score] || ''} onChange={(event) => select(score, event.target.value)}><option value="">Bir ülke seçin</option>{participants.map((entry) => <option key={entry.countryId} value={entry.countryId} disabled={selectedCountries.has(entry.countryId) && selections[score] !== entry.countryId}>{entry.flag} {entry.country} — {entry.songTitle}</option>)}</select>
           </div>
-        ))}</div><button className="btn-primary mt-6 w-full" disabled={!complete} onClick={() => setConfirming(true)}><Sparkles className="h-4 w-4" />Review final ballot</button></div>
-        <aside className="panel h-fit p-5 lg:sticky lg:top-28"><p className="eyebrow">Ballot progress</p><p className="hero-number mt-3 font-display text-5xl font-black">{Object.keys(selections).length}<span className="text-lg text-pink-100/45"> / 10</span></p><div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15"><div className="h-full bg-gradient-to-r from-orange via-pink to-softpink transition-all" style={{ width: `${Object.keys(selections).length * 10}%` }} /></div><div className="mt-6 space-y-2">{points.filter((score) => selections[score]).map((score) => { const entry = participants.find((item) => item.countryId === selections[score]); return <div key={score} className="flex items-center justify-between text-sm"><span className="text-pink-100/55">{score} points</span><span className="font-semibold">{entry?.flag} {entry?.country}</span></div>; })}</div></aside>
+        ))}</div><button className="btn-primary mt-6 w-full" disabled={!complete} onClick={() => setConfirming(true)}><Sparkles className="h-4 w-4" />Son oy pusulasını incele</button></div>
+        <aside className="panel h-fit p-5 lg:sticky lg:top-28"><p className="eyebrow">Oy pusulası ilerlemesi</p><p className="hero-number mt-3 font-display text-5xl font-black">{Object.keys(selections).length}<span className="text-lg text-pink-100/45"> / 10</span></p><div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15"><div className="h-full bg-gradient-to-r from-orange via-pink to-softpink transition-all" style={{ width: `${Object.keys(selections).length * 10}%` }} /></div><div className="mt-6 space-y-2">{points.filter((score) => selections[score]).map((score) => { const entry = participants.find((item) => item.countryId === selections[score]); return <div key={score} className="flex items-center justify-between text-sm"><span className="text-pink-100/55">{score} puan</span><span className="font-semibold">{entry?.flag} {entry?.country}</span></div>; })}</div></aside>
       </div>
-      {confirming && <div className="modal-backdrop fixed inset-0 z-50 grid place-items-center p-5 backdrop-blur-md"><div className="panel max-h-[90vh] w-full max-w-xl overflow-y-auto p-7"><p className="eyebrow">Final confirmation</p><h2 className="mt-3 font-display text-3xl font-black uppercase">Lock this ballot?</h2><p className="mt-2 text-pink-50/55">You cannot change it after submission.</p><div className="mt-6 grid gap-2 sm:grid-cols-2">{points.map((score) => { const entry = participants.find((item) => item.countryId === selections[score]); return <div key={score} className="flex items-center rounded-xl border border-white/15 bg-white/[.08] p-3"><span className="font-black text-orange">{score}</span><span className="ml-3">{entry?.flag} {entry?.country}</span></div>; })}</div><div className="mt-7 flex gap-3"><button className="btn-secondary flex-1" onClick={() => setConfirming(false)} disabled={busy}>Go back</button><button className="btn-primary flex-1" onClick={submit} disabled={busy}>{busy ? 'Submitting…' : 'Submit ballot'}</button></div></div></div>}
+      {confirming && <div className="modal-backdrop fixed inset-0 z-50 grid place-items-center p-5 backdrop-blur-md"><div className="panel max-h-[90vh] w-full max-w-xl overflow-y-auto p-7"><p className="eyebrow">Son onay</p><h2 className="mt-3 font-display text-3xl font-black uppercase">Bu oy pusulası kilitlensin mi?</h2><p className="mt-2 text-pink-50/55">Gönderdikten sonra değişiklik yapamazsınız.</p><div className="mt-6 grid gap-2 sm:grid-cols-2">{points.map((score) => { const entry = participants.find((item) => item.countryId === selections[score]); return <div key={score} className="flex items-center rounded-xl border border-white/15 bg-white/[.08] p-3"><span className="font-black text-orange">{score}</span><span className="ml-3">{entry?.flag} {entry?.country}</span></div>; })}</div><div className="mt-7 flex gap-3"><button className="btn-secondary flex-1" onClick={() => setConfirming(false)} disabled={busy}>Geri dön</button><button className="btn-primary flex-1" onClick={submit} disabled={busy}>{busy ? 'Gönderiliyor…' : 'Oy pusulasını gönder'}</button></div></div></div>}
     </PageShell>
   );
 }

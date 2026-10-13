@@ -4,9 +4,9 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Brand } from './Brand';
 
 const links = [
-  { to: '/', label: 'Home' },
-  { to: '/participants', label: 'Participants' },
-  { to: '/results', label: 'Results' },
+  { to: '/', label: 'Ana Sayfa' },
+  { to: '/participants', label: 'Katılımcılar' },
+  { to: '/results', label: 'Sonuçlar' },
 ];
 
 export function Layout() {
@@ -22,22 +22,21 @@ export function Layout() {
         <span className="ribbon ribbon-three" />
       </div>
       <header className="sticky top-0 z-40 border-b border-white/20 bg-purple/75 shadow-[0_8px_35px_rgba(72,17,100,.25)] backdrop-blur-2xl">
-        <div className="h-1 bg-gradient-to-r from-orange via-pink to-electric" />
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 lg:px-8">
           <Link to="/"><Brand /></Link>
-          <nav className="hidden items-center gap-8 md:flex" aria-label="Primary navigation">
+          <nav className="hidden items-center gap-8 md:flex" aria-label="Ana menü">
             {links.map((item) => <NavLink key={item.to} to={item.to} className={({ isActive }) => `nav-link py-2 text-sm font-bold transition ${isActive ? 'nav-link-active text-white' : 'text-pink-100/65 hover:text-white'}`}>{item.label}</NavLink>)}
           </nav>
           <div className="hidden items-center gap-3 md:flex">
-            <Link to="/admin" className="px-3 py-2 text-sm font-semibold text-pink-100/70 transition hover:text-white">Organizer</Link>
-            <Link to="/jury" className="btn-primary">Jury login</Link>
+            <Link to="/admin" className="px-3 py-2 text-sm font-semibold text-pink-100/70 transition hover:text-white">Yönetici</Link>
+            <Link to="/jury" className="btn-primary">Jüri girişi</Link>
           </div>
-          <button className="rounded-xl p-2 md:hidden" onClick={() => setOpen(!open)} aria-label="Toggle navigation">{open ? <X /> : <Menu />}</button>
+          <button className="rounded-xl p-2 md:hidden" onClick={() => setOpen(!open)} aria-label="Menüyü aç veya kapat">{open ? <X /> : <Menu />}</button>
         </div>
-        {open && <div className="border-t border-white/20 bg-purple/95 p-5 md:hidden"><div className="flex flex-col gap-3">{links.map((item) => <Link key={item.to} to={item.to} onClick={() => setOpen(false)} className="rounded-xl px-4 py-3 font-semibold text-pink-50 hover:bg-white/10">{item.label}</Link>)}<Link to="/admin" onClick={() => setOpen(false)} className="rounded-xl px-4 py-3 font-semibold text-pink-100/75 hover:bg-white/10">Organizer</Link><Link to="/jury" onClick={() => setOpen(false)} className="btn-primary mt-2">Jury login</Link></div></div>}
+        {open && <div className="border-t border-white/20 bg-purple/95 p-5 md:hidden"><div className="flex flex-col gap-3">{links.map((item) => <Link key={item.to} to={item.to} onClick={() => setOpen(false)} className="rounded-xl px-4 py-3 font-semibold text-pink-50 hover:bg-white/10">{item.label}</Link>)}<Link to="/admin" onClick={() => setOpen(false)} className="rounded-xl px-4 py-3 font-semibold text-pink-100/75 hover:bg-white/10">Yönetici</Link><Link to="/jury" onClick={() => setOpen(false)} className="btn-primary mt-2">Jüri girişi</Link></div></div>}
       </header>
       <main><Outlet /></main>
-      <footer className="border-t border-white/15 bg-purple/35 px-5 py-8 text-center text-sm text-pink-100/55 backdrop-blur-lg">Nexavision is an independent fan contest platform. Not affiliated with the Eurovision Song Contest.</footer>
+      <footer className="border-t border-white/15 bg-purple/35 px-5 py-8 text-center text-sm text-pink-100/55 backdrop-blur-lg">Nexavision bağımsız bir hayran yarışması platformudur. Eurovision Şarkı Yarışması ile bağlantılı değildir.</footer>
     </div>
   );
 }
