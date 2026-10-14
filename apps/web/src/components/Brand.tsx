@@ -1,7 +1,7 @@
 export function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <div className="flex items-center" aria-label="Nexavision ana sayfa">
-      {!compact && <span className="font-display text-xl font-black tracking-[0.08em] text-white drop-shadow-md">NEXA<span className="text-softpink">VISION</span></span>}
+      {!compact && <img className="h-16 w-40 object-contain sm:h-20 sm:w-48" src={`${import.meta.env.BASE_URL}nexavision-lyon-2026-logo.png`} alt="Nexavision Song Contest Lyon 2026" />}
     </div>
   );
 }
