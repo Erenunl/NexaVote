@@ -110,10 +110,6 @@ Do not run `seed/dev.sql` against production unless the demo edition is genuinel
 
 The workflow copies `index.html` to `404.html` so direct visits to `/admin`, `/jury`, and other client routes load correctly on GitHub Pages.
 
-### Jury login cinematic intro
-
-The first unauthenticated visit to `/jury` in each browser session displays the Lyon 2026 logo on black while `apps/web/public/results-opening.mp4` preloads. The logo fades out before the full-viewport video fades in. The intro is muted by default, includes optional sound and skip controls, and transitions through black into the existing jury login screen. Completion is stored only in `sessionStorage`, so refreshing or navigating within the same session does not replay it, while a new browser session does. Existing jury sessions bypass the intro, and load or playback failures fall back to the login screen automatically.
-
 ## Live jury reveal workflow
 
 1. Close voting when every expected ballot has been submitted.
