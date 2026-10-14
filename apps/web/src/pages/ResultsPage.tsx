@@ -39,6 +39,8 @@ const REVEAL_TIMING = {
 } as const;
 const OPENING_TIMING = {
   audioStartSeconds: 4,
+  logoAt: 500,
+  logoFadeOutAt: 7000,
   titleAt: 8000,
   titleEndAt: 14000,
   videoAt: 14000,
@@ -51,6 +53,7 @@ const GUEST_TIMING = {
 } as const;
 const openingAudioUrl = `${import.meta.env.BASE_URL}results-opening.mp3`;
 const openingVideoUrl = `${import.meta.env.BASE_URL}results-opening.mp4`;
+const openingLogoUrl = `${import.meta.env.BASE_URL}nexavision-lyon-2026-logo.png`;
 const guestVideoUrl = `${import.meta.env.BASE_URL}guest-performance.mp4`;
 
 function addScore(scoreboard: Result[], score: RevealScore): Result[] {
@@ -368,6 +371,9 @@ export function ResultsPage() {
       : guestElapsed < GUEST_TIMING.videoAt
         ? 'title'
         : 'video';
+  const openingLogoVisible = openingElapsed !== null
+    && openingElapsed >= OPENING_TIMING.logoAt
+    && openingElapsed < OPENING_TIMING.logoFadeOutAt;
   const guestIsVisible = guestPresentation?.phase === 'playing';
   const openingAudio = <audio key="results-opening-audio" ref={audioRef} preload="auto" src={openingAudioUrl} />;
   const openingVideo = <video key="results-opening-video" ref={videoRef} className={`pointer-events-none fixed inset-0 z-[110] h-full w-full object-cover object-center transition-opacity duration-700 ${openingStage === 'video' && videoReady ? 'opacity-100' : 'opacity-0'}`} src={openingVideoUrl} muted playsInline preload="auto" aria-hidden="true" onLoadedData={() => setVideoReady(true)} onCanPlay={() => setVideoReady(true)} onPlaying={() => setVideoReady(true)} onError={() => setVideoReady(false)} />;
@@ -403,6 +409,9 @@ export function ResultsPage() {
 
       {openingStage && <div className="results-opening fixed inset-0 z-[100] overflow-hidden bg-black" role="status" aria-live="assertive">
         <div className={`results-opening-stars absolute inset-0 transition-opacity duration-1000 ${openingStage === 'black' ? 'opacity-0' : 'opacity-100'}`} />
+        <div className={`pointer-events-none absolute inset-0 z-10 grid place-items-center px-6 transition-opacity duration-[800ms] ${openingLogoVisible ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true">
+          <img className="h-auto w-[min(88vw,1100px)] object-contain" src={openingLogoUrl} alt="" />
+        </div>
         {openingElapsed !== null && openingElapsed >= OPENING_TIMING.titleAt && openingElapsed < OPENING_TIMING.titleEndAt && <div className="results-opening-title absolute inset-0 z-10">
           <span className="opening-word opening-word-united">UNITED</span>
           <span className="opening-word opening-word-by">BY</span>
