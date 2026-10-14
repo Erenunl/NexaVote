@@ -1,5 +1,6 @@
 import { Check, ChevronRight, KeyRound, LogOut, ShieldCheck, Sparkles, Star } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { CinematicIntro, shouldPlayCinematicIntro } from '../components/CinematicIntro';
 import { api, juryToken } from '../lib/api';
 import type { Participant } from './ParticipantsPage';
 
@@ -11,17 +12,18 @@ export function JuryPage() {
   const [token, setToken] = useState(juryToken.get());
   const [me, setMe] = useState<JuryMe | null>(null);
   const [loading, setLoading] = useState(Boolean(token));
+  const [showIntro, setShowIntro] = useState(() => !juryToken.get() && shouldPlayCinematicIntro());
   useEffect(() => {
     if (!token) return;
     setLoading(true);
     api<JuryMe>('/api/jury/me', { token }).then(setMe).catch(() => { juryToken.clear(); setToken(null); }).finally(() => setLoading(false));
   }, [token]);
   if (loading) return <PageShell><div className="panel mx-auto max-w-lg p-10 text-center text-pink-50/60">Jüri odası açılıyor…</div></PageShell>;
-  if (!token || !me) return <Login onSuccess={(newToken, jury) => { juryToken.set(newToken); setToken(newToken); setMe({ jury, edition: { name: 'Nexavision', phase: 'open' }, submitted: false }); }} />;
+  if (!token || !me) return <><Login autoFocus={!showIntro} onSuccess={(newToken, jury) => { juryToken.set(newToken); setToken(newToken); setMe({ jury, edition: { name: 'Nexavision', phase: 'open' }, submitted: false }); }} />{showIntro && <CinematicIntro onComplete={() => setShowIntro(false)} />}</>;
   return <VotingRoom token={token} me={me} onLogout={() => { juryToken.clear(); setToken(null); setMe(null); }} />;
 }
 
-function Login({ onSuccess }: { onSuccess: (token: string, jury: JuryMe['jury']) => void }) {
+function Login({ onSuccess, autoFocus }: { onSuccess: (token: string, jury: JuryMe['jury']) => void; autoFocus: boolean }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -45,7 +47,7 @@ function Login({ onSuccess }: { onSuccess: (token: string, jury: JuryMe['jury'])
           <form onSubmit={submit} className="relative p-8 sm:p-11">
             <div className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-pink to-orange shadow-lg shadow-pink/30"><KeyRound /></div>
             <h2 className="mt-7 font-display text-3xl font-black uppercase">Jüri odasına gir</h2><p className="mt-2 text-sm text-pink-50/55">Organizatörünüzün gönderdiği özel şifreyi kullanın. Kullanıcı adı gerekmez.</p>
-            <label className="mt-8 block text-sm font-bold text-pink-50/80">Jüri erişim şifresi<input autoFocus type="password" className="input mt-2" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Özel şifrenizi girin" autoComplete="current-password" /></label>
+            <label className="mt-8 block text-sm font-bold text-pink-50/80">Jüri erişim şifresi<input autoFocus={autoFocus} type="password" className="input mt-2" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Özel şifrenizi girin" autoComplete="current-password" /></label>
             {error && <p className="mt-4 rounded-xl border border-coral/30 bg-coral/15 px-4 py-3 text-sm text-pink-50">{error}</p>}
             <button className="btn-primary mt-6 w-full" disabled={busy || !password}>{busy ? 'Doğrulanıyor…' : 'Oylamaya devam et'} <ChevronRight className="h-4 w-4" /></button>
           </form>
