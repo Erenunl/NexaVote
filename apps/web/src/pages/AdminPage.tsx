@@ -1,4 +1,4 @@
-import { Activity, CheckCircle2, Download, Eye, EyeOff, KeyRound, LogOut, Play, Radio, RefreshCcw, RotateCcw, Settings2, Shield, Square, Users } from 'lucide-react';
+import { Activity, CheckCircle2, Download, Eye, EyeOff, KeyRound, LogOut, Medal, Play, Radio, RefreshCcw, RotateCcw, Settings2, Shield, Square, Trash2, Trophy, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { adminToken, api, apiUrl } from '../lib/api';
@@ -10,6 +10,7 @@ type Entry = { id: string; editionId: string; countryId: string; code: string; c
 type Result = { countryId: string; country: string; flag: string; totalPoints: number };
 type Breakdown = { juryCountry: string; recipientCountry: string; points: number };
 type SubmittedJury = { countryId: string; country: string; flag: string; submittedAt: string; revealOrder?: number | null; revealedAt?: string | null };
+type Champion = { id: string; editionId: string; editionName: string; editionYear: number; placement: number; countryId: string; country: string; flag: string; artist: string; songTitle: string; totalPoints: number; createdAt: string };
 type AuditEvent = { id: string; action: string; actorType: string; targetType?: string; targetId?: string; createdAt: string };
 
 export function AdminPage() {
@@ -72,14 +73,19 @@ function AdminResults({ token, edition, patchEdition }: { token: string; edition
   const [results, setResults] = useState<Result[]>([]);
   const [breakdown, setBreakdown] = useState<Breakdown[]>([]);
   const [submittedJuries, setSubmittedJuries] = useState<SubmittedJury[]>([]);
+  const [champions, setChampions] = useState<Champion[]>([]);
   const [selectedJuryId, setSelectedJuryId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [now, setNow] = useState(Date.now());
-  const load = useCallback(() => api<{ scoreboard: Result[]; breakdown: Breakdown[]; submittedJuries: SubmittedJury[] }>(`/api/admin/results?editionId=${edition.id}`, { token }).then((data) => {
-    setResults(data.scoreboard);
-    setBreakdown(data.breakdown);
-    setSubmittedJuries(data.submittedJuries);
+  const load = useCallback(() => Promise.all([
+    api<{ scoreboard: Result[]; breakdown: Breakdown[]; submittedJuries: SubmittedJury[] }>(`/api/admin/results?editionId=${edition.id}`, { token }),
+    api<{ champions: Champion[] }>(`/api/admin/champions?editionId=${edition.id}`, { token }),
+  ]).then(([resultData, championData]) => {
+    setResults(resultData.scoreboard);
+    setBreakdown(resultData.breakdown);
+    setSubmittedJuries(resultData.submittedJuries);
+    setChampions(championData.champions);
   }), [edition.id, token]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -116,6 +122,31 @@ function AdminResults({ token, edition, patchEdition }: { token: string; edition
       setBusy(false);
     }
   };
+  const snapshotChampions = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/api/admin/editions/${edition.id}/champions`, { method: 'POST', token });
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'İlk üç arşivlenemedi.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const removeChampion = async (champion: Champion) => {
+    if (!window.confirm(`${champion.placement}. sıradaki ${champion.country} şampiyonlar arşivinden silinsin mi?`)) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/api/admin/champions/${champion.id}`, { method: 'DELETE', token });
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Arşiv kaydı silinemedi.');
+    } finally {
+      setBusy(false);
+    }
+  };
   const juries = [...new Set(breakdown.map((vote) => vote.juryCountry))];
   const revealedJuries = submittedJuries.filter((jury) => jury.revealOrder != null).sort((a, b) => Number(a.revealOrder) - Number(b.revealOrder));
   const availableJuries = submittedJuries.filter((jury) => jury.revealOrder == null);
@@ -126,6 +157,11 @@ function AdminResults({ token, edition, patchEdition }: { token: string; edition
   return <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_380px]">
     <div className="space-y-6">
       <div className="panel p-4"><div className="space-y-2">{results.map((result, index) => <div key={result.countryId} className="grid grid-cols-[45px_1fr_auto] items-center rounded-2xl border border-white/[.06] p-3"><span className="font-display text-lg font-bold text-slate-500">{index + 1}</span><span className="font-semibold"><span className="mr-3 text-2xl">{result.flag}</span>{result.country}</span><span className="font-display text-xl font-bold">{result.totalPoints} puan</span></div>)}</div></div>
+      <div className="panel p-5">
+        <div className="relative z-10 flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><p className="eyebrow">Kalıcı arşiv</p><h2 className="mt-2 font-display text-xl font-semibold">{edition.name} podyumu</h2><p className="mt-1 text-sm text-pink-50/50">Son jüri açıklandığında otomatik kaydedilir. Bu düğmeyle istediğiniz zaman yenileyebilirsiniz.</p></div><button className="btn-secondary shrink-0" disabled={busy || results.length < 3 || Number(results[0]?.totalPoints ?? 0) <= 0} onClick={snapshotChampions}><Trophy className="h-4 w-4" />{champions.length ? 'İlk 3’ü güncelle' : 'İlk 3’ü kaydet'}</button></div>
+        <div className="relative z-10 mt-5 space-y-2">{champions.map((champion) => <div key={champion.id} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[.06] p-3"><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${champion.placement === 1 ? 'bg-orange/25 text-orange' : 'bg-white/10 text-softpink'}`}>{champion.placement === 1 ? <Trophy className="h-5 w-5" /> : <Medal className="h-5 w-5" />}</span><span className="text-2xl">{champion.flag}</span><div className="min-w-0 flex-1"><p className="truncate font-bold">{champion.placement}. {champion.country}</p><p className="truncate text-xs text-pink-50/50">{champion.artist} · {champion.songTitle} · {champion.totalPoints} puan</p></div><button type="button" title={`${champion.country} kaydını sil`} aria-label={`${champion.country} kaydını sil`} disabled={busy} onClick={() => removeChampion(champion)} className="rounded-xl border border-rose-300/20 bg-rose-400/10 p-2 text-rose-200 transition hover:bg-rose-400/20 disabled:opacity-40"><Trash2 className="h-4 w-4" /></button></div>)}</div>
+        {champions.length === 0 && <p className="relative z-10 mt-5 rounded-2xl border border-dashed border-white/15 p-5 text-center text-sm text-pink-50/45">Bu dönem için henüz arşivlenmiş bir podyum yok.</p>}
+      </div>
       <div className="panel p-5"><h2 className="font-display text-xl font-semibold">Jüri bazında puan dökümü</h2><div className="mt-4 grid gap-3 md:grid-cols-2">{juries.map((jury) => <details key={jury} className="rounded-2xl border border-white/[.07] bg-black/15 p-4"><summary className="cursor-pointer font-semibold">{jury}</summary><div className="mt-3 space-y-1">{breakdown.filter((vote) => vote.juryCountry === jury).map((vote) => <div key={`${jury}-${vote.points}`} className="flex justify-between text-sm"><span className="text-slate-400">{vote.recipientCountry}</span><strong>{vote.points}</strong></div>)}</div></details>)}</div>{juries.length === 0 && <p className="mt-4 text-sm text-slate-500">Henüz gönderilmiş oy pusulası yok.</p>}</div>
     </div>
     <aside className="panel h-fit p-6">
@@ -170,6 +206,8 @@ const auditActionLabels: Record<string, string> = {
   'ballot.submitted': 'Oy pusulası gönderildi',
   'results.jury_revealed': 'Jüri oyları canlı sonuçlarda açıklandı',
   'results.jury_reveal_removed': 'Jüri açıklaması geri alındı',
+  'champions.snapshot_created': 'Şampiyonlar podyumu arşivlendi',
+  'champions.entry_removed': 'Şampiyonlar arşivi kaydı silindi',
 };
 
 function AuditLog({ token }: { token: string }) { const [events, setEvents] = useState<AuditEvent[]>([]); useEffect(() => { api<{ events: AuditEvent[] }>('/api/admin/audit-log', { token }).then((data) => setEvents(data.events)); }, [token]); return <div className="panel mt-6 overflow-hidden"><div className="border-b border-white/[.07] p-5"><h2 className="font-display text-xl font-semibold">Güvenlik ve işlem kayıtları</h2></div><div className="divide-y divide-white/[.06]">{events.map((event) => <div key={event.id} className="grid gap-2 p-4 text-sm sm:grid-cols-[180px_1fr_120px]"><span className="text-slate-500">{new Date(event.createdAt).toLocaleString('tr-TR')}</span><span className="font-medium">{auditActionLabels[event.action] || event.action}</span><span className="text-right text-slate-500">{event.actorType === 'admin' ? 'Yönetici' : event.actorType === 'jury' ? 'Jüri' : event.actorType === 'integration' ? 'Entegrasyon' : event.actorType}</span></div>)}</div></div>; }

@@ -22,6 +22,7 @@ const errorMessages: Record<string, string> = {
   INVALID_PASSWORD: 'Geçersiz şifre.',
   JURY_NOT_SUBMITTED: 'Bu jüri henüz oyunu göndermedi.',
   JURY_ALREADY_REVEALED: 'Bu jürinin oyları daha önce açıklandı.',
+  PODIUM_NOT_READY: 'İlk üçü kaydetmek için en az üç puanlanmış katılımcı gerekiyor.',
 };
 
 export async function api<T>(path: string, options: RequestInit & { token?: string | null } = {}): Promise<T> {

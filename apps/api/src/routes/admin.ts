@@ -4,6 +4,7 @@ import { requireAdmin, audit, isRateLimited, clearRateLimit } from '../lib/auth'
 import { randomToken, sha256, verifyEncodedPassword } from '../lib/crypto';
 import { generateJuryPassword, setJuryCredential } from '../lib/credentials';
 import { isoAfterMinutes } from '../lib/http';
+import { snapshotEditionPodium } from '../lib/champions';
 
 type AppEnv = { Bindings: Bindings; Variables: AppVariables };
 export const adminRoutes = new Hono<AppEnv>();
@@ -231,6 +232,36 @@ adminRoutes.get('/results', async (context) => {
   return context.json({ scoreboard: scoreboard.results, breakdown: breakdown.results, submittedJuries: submittedJuries.results });
 });
 
+adminRoutes.get('/champions', async (context) => {
+  const editionId = context.req.query('editionId');
+  const query = `SELECT id, edition_id AS editionId, edition_name AS editionName, edition_year AS editionYear,
+    placement, country_id AS countryId, country_name AS country, country_flag AS flag, artist,
+    song_title AS songTitle, total_points AS totalPoints, created_at AS createdAt
+    FROM champions ${editionId ? 'WHERE edition_id = ?' : ''} ORDER BY edition_year DESC, placement`;
+  const rows = editionId
+    ? await context.env.DB.prepare(query).bind(editionId).all()
+    : await context.env.DB.prepare(query).all();
+  return context.json({ champions: rows.results });
+});
+
+adminRoutes.post('/editions/:editionId/champions', async (context) => {
+  const editionId = context.req.param('editionId');
+  const champions = await snapshotEditionPodium(context.env.DB, editionId);
+  if (champions.length < 3) return context.json({ error: { code: 'PODIUM_NOT_READY', message: 'At least three scored entries are required.' } }, 409);
+  await audit(context.env.DB, 'admin', context.get('adminSessionId'), 'champions.snapshot_created', 'edition', editionId, editionId, { placements: champions.map((item) => ({ countryId: item.countryId, placement: item.placement })) });
+  return context.json({ champions }, 201);
+});
+
+adminRoutes.delete('/champions/:championId', async (context) => {
+  const championId = context.req.param('championId');
+  const champion = await context.env.DB.prepare('SELECT edition_id AS editionId, placement FROM champions WHERE id = ?')
+    .bind(championId).first<{ editionId: string; placement: number }>();
+  if (!champion) return context.json({ error: { code: 'NOT_FOUND', message: 'Champion record not found.' } }, 404);
+  await context.env.DB.prepare('DELETE FROM champions WHERE id = ?').bind(championId).run();
+  await audit(context.env.DB, 'admin', context.get('adminSessionId'), 'champions.entry_removed', 'champion', championId, champion.editionId, { placement: champion.placement });
+  return context.json({ removed: true });
+});
+
 adminRoutes.post('/editions/:editionId/reveals/:countryId', async (context) => {
   const { editionId, countryId } = context.req.param();
   const ballot = await context.env.DB.prepare('SELECT id FROM ballots WHERE edition_id = ? AND jury_country_id = ?')
@@ -248,6 +279,13 @@ adminRoutes.post('/editions/:editionId/reveals/:countryId', async (context) => {
   const id = crypto.randomUUID();
   await context.env.DB.prepare('INSERT INTO jury_reveals (id, edition_id, jury_country_id, reveal_order) VALUES (?, ?, ?, ?)')
     .bind(id, editionId, countryId, sequence.revealOrder).run();
+  const revealProgress = await context.env.DB.prepare(`SELECT
+    (SELECT COUNT(*) FROM ballots WHERE edition_id = ?) AS ballots,
+    (SELECT COUNT(*) FROM jury_reveals WHERE edition_id = ?) AS reveals`)
+    .bind(editionId, editionId).first<{ ballots: number; reveals: number }>();
+  if (revealProgress && revealProgress.ballots > 0 && revealProgress.ballots === revealProgress.reveals) {
+    await snapshotEditionPodium(context.env.DB, editionId);
+  }
   const reveal = await context.env.DB.prepare('SELECT reveal_order AS revealOrder, revealed_at AS revealedAt FROM jury_reveals WHERE id = ?')
     .bind(id).first();
   await audit(context.env.DB, 'admin', context.get('adminSessionId'), 'results.jury_revealed', 'country', countryId, editionId, reveal ?? {});

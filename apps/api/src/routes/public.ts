@@ -103,3 +103,11 @@ publicRoutes.get('/results', async (context) => {
   return context.json({ edition: edition.name, resultsOpenedAt: edition.resultsOpenedAt, guestActive: Boolean(edition.guestActive), guestStartedAt: edition.guestStartedAt, winnerActive: Boolean(edition.winnerActive), winnerStartedAt: edition.winnerStartedAt, juriesRevealed: reveals.length, juriesSubmitted: ballotCount?.count ?? 0, scoreboard: rows.results, reveals });
 });
 
+publicRoutes.get('/champions', async (context) => {
+  const rows = await context.env.DB.prepare(`SELECT id, edition_id AS editionId, edition_name AS editionName,
+    edition_year AS editionYear, placement, country_name AS country, country_flag AS flag, artist,
+    song_title AS songTitle, total_points AS totalPoints, created_at AS createdAt
+    FROM champions ORDER BY edition_year DESC, placement`).all();
+  return context.json({ champions: rows.results });
+});
+

@@ -6,6 +6,7 @@ import { Brand } from './Brand';
 const links = [
   { to: '/', label: 'Ana Sayfa' },
   { to: '/participants', label: 'Katılımcılar' },
+  { to: '/champions', label: 'Şampiyonlar' },
   { to: '/results', label: 'Sonuçlar' },
 ];
 
