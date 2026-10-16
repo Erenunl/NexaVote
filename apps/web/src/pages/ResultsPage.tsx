@@ -17,6 +17,8 @@ type ResultsResponse = {
   resultsOpenedAt: string | null;
   guestActive: boolean;
   guestStartedAt: string | null;
+  winnerActive: boolean;
+  winnerStartedAt: string | null;
   juriesRevealed: number;
   juriesSubmitted: number;
   scoreboard: Result[];
@@ -29,6 +31,7 @@ type ActiveReveal = {
   scoreIndex?: number;
 };
 type GuestPresentation = { startedAt: number; phase: 'entering' | 'playing' | 'exiting' };
+type WinnerPresentation = { startedAt: number; phase: 'entering' | 'playing' | 'exiting' };
 
 const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 const REVEAL_TIMING = {
@@ -51,10 +54,15 @@ const GUEST_TIMING = {
   videoAt: 4500,
   fadeDuration: 1200,
 } as const;
+const WINNER_TIMING = {
+  videoAt: 800,
+  fadeDuration: 1200,
+} as const;
 const openingAudioUrl = `${import.meta.env.BASE_URL}results-opening.mp3`;
 const openingVideoUrl = `${import.meta.env.BASE_URL}results-opening.mp4`;
 const openingLogoUrl = `${import.meta.env.BASE_URL}nexavision-lyon-2026-logo.png`;
 const guestVideoUrl = `${import.meta.env.BASE_URL}guest-performance.mp4`;
+const winnerVideoUrl = `${import.meta.env.BASE_URL}winner-studio.mp4`;
 
 function addScore(scoreboard: Result[], score: RevealScore): Result[] {
   return scoreboard
@@ -76,6 +84,10 @@ export function ResultsPage() {
   const [guestAudioBlocked, setGuestAudioBlocked] = useState(false);
   const [guestPresentation, setGuestPresentation] = useState<GuestPresentation | null>(null);
   const [guestElapsed, setGuestElapsed] = useState<number | null>(null);
+  const [winnerVideoReady, setWinnerVideoReady] = useState(false);
+  const [winnerAudioBlocked, setWinnerAudioBlocked] = useState(false);
+  const [winnerPresentation, setWinnerPresentation] = useState<WinnerPresentation | null>(null);
+  const [winnerElapsed, setWinnerElapsed] = useState<number | null>(null);
   const seenRevealOrder = useRef<number | null>(null);
   const revealQueue = useRef<JuryReveal[]>([]);
   const processingQueue = useRef(false);
@@ -92,9 +104,15 @@ export function ResultsPage() {
   const guestEnterTimer = useRef<number | null>(null);
   const guestFadeTimer = useRef<number | null>(null);
   const guestVolumeTimer = useRef<number | null>(null);
+  const winnerVideoRef = useRef<HTMLVideoElement>(null);
+  const winnerActive = useRef(false);
+  const winnerRunId = useRef<string | null>(null);
+  const winnerEnterTimer = useRef<number | null>(null);
+  const winnerFadeTimer = useRef<number | null>(null);
+  const winnerVolumeTimer = useRef<number | null>(null);
 
   const playRevealQueue = useCallback(async () => {
-    if (processingQueue.current || openingActive.current || guestActive.current) return;
+    if (processingQueue.current || openingActive.current || guestActive.current || winnerActive.current) return;
     processingQueue.current = true;
     while (mounted.current && revealQueue.current.length > 0) {
       const reveal = revealQueue.current.shift();
@@ -180,6 +198,56 @@ export function ResultsPage() {
     }, GUEST_TIMING.fadeDuration);
   }, [playRevealQueue]);
 
+  const updateWinnerBroadcast = useCallback((active: boolean, startedAt: string | null) => {
+    const runId = active && startedAt ? startedAt : null;
+    if (runId) {
+      if (winnerRunId.current === runId) return;
+      const parsedStartedAt = Date.parse(runId);
+      if (!Number.isFinite(parsedStartedAt)) return;
+      winnerRunId.current = runId;
+      winnerActive.current = true;
+      if (winnerEnterTimer.current !== null) window.clearTimeout(winnerEnterTimer.current);
+      if (winnerFadeTimer.current !== null) window.clearTimeout(winnerFadeTimer.current);
+      if (winnerVolumeTimer.current !== null) window.clearInterval(winnerVolumeTimer.current);
+      const video = winnerVideoRef.current;
+      if (video) video.volume = 1;
+      setWinnerAudioBlocked(false);
+      setWinnerElapsed(Math.max(0, Date.now() - parsedStartedAt));
+      setWinnerPresentation({ startedAt: parsedStartedAt, phase: 'entering' });
+      winnerEnterTimer.current = window.setTimeout(() => {
+        setWinnerPresentation((current) => current?.startedAt === parsedStartedAt ? { ...current, phase: 'playing' } : current);
+      }, 80);
+      return;
+    }
+    if (!winnerActive.current && winnerRunId.current === null) return;
+    winnerRunId.current = null;
+    winnerActive.current = false;
+    if (winnerEnterTimer.current !== null) window.clearTimeout(winnerEnterTimer.current);
+    setWinnerPresentation((current) => current ? { ...current, phase: 'exiting' } : null);
+    const video = winnerVideoRef.current;
+    const fadeStartedAt = performance.now();
+    const initialVolume = video?.volume ?? 1;
+    if (winnerVolumeTimer.current !== null) window.clearInterval(winnerVolumeTimer.current);
+    winnerVolumeTimer.current = window.setInterval(() => {
+      if (!video) return;
+      const progress = Math.min(1, (performance.now() - fadeStartedAt) / WINNER_TIMING.fadeDuration);
+      video.volume = Math.max(0, initialVolume * (1 - progress));
+    }, 50);
+    if (winnerFadeTimer.current !== null) window.clearTimeout(winnerFadeTimer.current);
+    winnerFadeTimer.current = window.setTimeout(() => {
+      if (winnerVolumeTimer.current !== null) window.clearInterval(winnerVolumeTimer.current);
+      if (video) {
+        video.pause();
+        video.currentTime = 0;
+        video.volume = 1;
+      }
+      setWinnerPresentation(null);
+      setWinnerElapsed(null);
+      setWinnerAudioBlocked(false);
+      void playRevealQueue();
+    }, WINNER_TIMING.fadeDuration);
+  }, [playRevealQueue]);
+
   const refreshResults = useCallback(async () => {
     try {
       const data = await api<ResultsResponse>('/api/public/results');
@@ -189,6 +257,7 @@ export function ResultsPage() {
       latestServerScoreboard.current = data.scoreboard;
       beginOpening(data.resultsOpenedAt);
       updateGuestBroadcast(data.guestActive, data.guestStartedAt);
+      updateWinnerBroadcast(data.winnerActive, data.winnerStartedAt);
       const newestOrder = data.reveals.at(-1)?.revealOrder ?? 0;
       if (seenRevealOrder.current === null) {
         seenRevealOrder.current = newestOrder;
@@ -215,9 +284,10 @@ export function ResultsPage() {
         audioRef.current?.pause();
         videoRef.current?.pause();
         updateGuestBroadcast(false, null);
+        updateWinnerBroadcast(false, null);
       }
     }
-  }, [beginOpening, playRevealQueue, updateGuestBroadcast]);
+  }, [beginOpening, playRevealQueue, updateGuestBroadcast, updateWinnerBroadcast]);
 
   const prepareAudio = useCallback(async () => {
     const audio = audioRef.current;
@@ -230,13 +300,14 @@ export function ResultsPage() {
       audio.muted = false;
       setAudioReady(true);
       setAudioBlocked(false);
-      const guestVideo = guestVideoRef.current;
-      if (guestVideo && guestVideo.readyState > 0) {
-        guestVideo.muted = true;
-        await guestVideo.play();
-        guestVideo.pause();
-        guestVideo.currentTime = 0;
-        guestVideo.muted = false;
+      const broadcastVideos = [guestVideoRef.current, winnerVideoRef.current];
+      for (const broadcastVideo of broadcastVideos) {
+        if (!broadcastVideo || broadcastVideo.readyState === 0) continue;
+        broadcastVideo.muted = true;
+        await broadcastVideo.play().catch(() => undefined);
+        broadcastVideo.pause();
+        broadcastVideo.currentTime = 0;
+        broadcastVideo.muted = false;
       }
     } catch {
       audio.muted = false;
@@ -269,6 +340,19 @@ export function ResultsPage() {
       setGuestAudioBlocked(false);
     } catch {
       setGuestAudioBlocked(true);
+    }
+  }, []);
+
+  const enableWinnerAudio = useCallback(async () => {
+    const video = winnerVideoRef.current;
+    if (!video) return;
+    try {
+      video.muted = false;
+      video.volume = 1;
+      await video.play();
+      setWinnerAudioBlocked(false);
+    } catch {
+      setWinnerAudioBlocked(true);
     }
   }, []);
 
@@ -341,6 +425,28 @@ export function ResultsPage() {
   }, [guestPresentation]);
 
   useEffect(() => {
+    if (!winnerPresentation || winnerPresentation.phase === 'exiting') return;
+    const video = winnerVideoRef.current;
+    if (!video) return;
+    const synchronize = () => {
+      const elapsed = Math.max(0, Date.now() - winnerPresentation.startedAt);
+      setWinnerElapsed(elapsed);
+      if (elapsed < WINNER_TIMING.videoAt || video.readyState < 2) return;
+      const rawTargetTime = (elapsed - WINNER_TIMING.videoAt) / 1000;
+      const targetTime = Number.isFinite(video.duration) ? Math.min(rawTargetTime, Math.max(0, video.duration - 0.05)) : rawTargetTime;
+      if (!video.seeking && Math.abs(video.currentTime - targetTime) > 1.25) video.currentTime = targetTime;
+      if (video.paused && (!Number.isFinite(video.duration) || targetTime < video.duration - 0.05)) {
+        video.muted = false;
+        video.volume = 1;
+        void video.play().then(() => setWinnerAudioBlocked(false)).catch(() => setWinnerAudioBlocked(true));
+      }
+    };
+    synchronize();
+    const timer = window.setInterval(synchronize, 100);
+    return () => window.clearInterval(timer);
+  }, [winnerPresentation]);
+
+  useEffect(() => {
     mounted.current = true;
     void refreshResults();
     const timer = window.setInterval(refreshResults, 1500);
@@ -351,6 +457,10 @@ export function ResultsPage() {
       if (guestFadeTimer.current !== null) window.clearTimeout(guestFadeTimer.current);
       if (guestVolumeTimer.current !== null) window.clearInterval(guestVolumeTimer.current);
       guestVideoRef.current?.pause();
+      if (winnerEnterTimer.current !== null) window.clearTimeout(winnerEnterTimer.current);
+      if (winnerFadeTimer.current !== null) window.clearTimeout(winnerFadeTimer.current);
+      if (winnerVolumeTimer.current !== null) window.clearInterval(winnerVolumeTimer.current);
+      winnerVideoRef.current?.pause();
     };
   }, [refreshResults]);
 
@@ -375,14 +485,17 @@ export function ResultsPage() {
     && openingElapsed >= OPENING_TIMING.logoAt
     && openingElapsed < OPENING_TIMING.logoFadeOutAt;
   const guestIsVisible = guestPresentation?.phase === 'playing';
+  const winnerIsVisible = winnerPresentation?.phase === 'playing';
+  const winnerVideoVisible = winnerElapsed !== null && winnerElapsed >= WINNER_TIMING.videoAt;
   const openingAudio = <audio key="results-opening-audio" ref={audioRef} preload="auto" src={openingAudioUrl} />;
   const openingVideo = <video key="results-opening-video" ref={videoRef} className={`pointer-events-none fixed inset-0 z-[110] h-full w-full object-cover object-center transition-opacity duration-700 ${openingStage === 'video' && videoReady ? 'opacity-100' : 'opacity-0'}`} src={openingVideoUrl} muted playsInline preload="auto" aria-hidden="true" onLoadedData={() => setVideoReady(true)} onCanPlay={() => setVideoReady(true)} onPlaying={() => setVideoReady(true)} onError={() => setVideoReady(false)} />;
   const guestVideo = <video key="guest-performance-video" ref={guestVideoRef} className={`pointer-events-none fixed inset-0 z-[130] h-full w-full object-cover object-center transition-opacity duration-1000 ${guestIsVisible && guestStage === 'video' && guestVideoReady ? 'opacity-100' : 'opacity-0'}`} src={guestVideoUrl} playsInline preload="auto" aria-hidden="true" onLoadedData={() => setGuestVideoReady(true)} onCanPlay={() => setGuestVideoReady(true)} onPlaying={() => setGuestVideoReady(true)} onError={() => setGuestVideoReady(false)} />;
+  const winnerVideo = <video key="winner-studio-video" ref={winnerVideoRef} className={`pointer-events-none fixed inset-0 z-[130] h-full w-full object-cover object-center transition-opacity duration-1000 ${winnerIsVisible && winnerVideoVisible && winnerVideoReady ? 'opacity-100' : 'opacity-0'}`} src={winnerVideoUrl} playsInline preload="auto" aria-hidden="true" onLoadedData={() => setWinnerVideoReady(true)} onCanPlay={() => setWinnerVideoReady(true)} onPlaying={() => setWinnerVideoReady(true)} onError={() => setWinnerVideoReady(false)} />;
 
-  if (hidden) return <>{openingAudio}{openingVideo}{guestVideo}<section className="mx-auto grid min-h-[75vh] max-w-3xl place-items-center px-5 py-16"><div className="panel w-full overflow-hidden p-10 text-center"><div className="stage-orbit mx-auto grid h-28 w-28 place-items-center"><span className="relative z-10 grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-pink to-orange shadow-lg shadow-pink/30"><LockKeyhole /></span></div><p className="eyebrow mt-7">Büyük açıklama yaklaşıyor</p><h1 className="mt-3 font-display text-4xl font-black uppercase">Sonuçlar henüz gizli</h1><p className="mx-auto mt-4 max-w-md leading-7 text-pink-50/60">Organizatör sonuç ekranını açtığında bu sayfa kendiliğinden canlı yayına geçecek. Yenilemeniz gerekmez.</p><button className="btn-primary mx-auto mt-6" onClick={prepareAudio}>{audioReady ? 'Yayın sesi hazır' : 'Yayın sesini hazırla'}</button><div className="mt-5 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-softpink"><span className="status-dot animate-pulseSoft bg-softpink" /> Canlı bağlantı bekleniyor</div></div></section></>;
+  if (hidden) return <>{openingAudio}{openingVideo}{guestVideo}{winnerVideo}<section className="mx-auto grid min-h-[75vh] max-w-3xl place-items-center px-5 py-16"><div className="panel w-full overflow-hidden p-10 text-center"><div className="stage-orbit mx-auto grid h-28 w-28 place-items-center"><span className="relative z-10 grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-pink to-orange shadow-lg shadow-pink/30"><LockKeyhole /></span></div><p className="eyebrow mt-7">Büyük açıklama yaklaşıyor</p><h1 className="mt-3 font-display text-4xl font-black uppercase">Sonuçlar henüz gizli</h1><p className="mx-auto mt-4 max-w-md leading-7 text-pink-50/60">Organizatör sonuç ekranını açtığında bu sayfa kendiliğinden canlı yayına geçecek. Yenilemeniz gerekmez.</p><button className="btn-primary mx-auto mt-6" onClick={prepareAudio}>{audioReady ? 'Yayın sesi hazır' : 'Yayın sesini hazırla'}</button><div className="mt-5 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-softpink"><span className="status-dot animate-pulseSoft bg-softpink" /> Canlı bağlantı bekleniyor</div></div></section></>;
 
   return (
-    <>{openingAudio}{openingVideo}{guestVideo}<section className="mx-auto min-h-[75vh] max-w-7xl px-5 py-14 lg:px-8">
+    <>{openingAudio}{openingVideo}{guestVideo}{winnerVideo}<section className="mx-auto min-h-[75vh] max-w-7xl px-5 py-14 lg:px-8">
       <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div><div className="broadcast-chip mb-4"><Radio className="h-3.5 w-3.5 text-orange" /> Canlı · Otomatik güncelleniyor</div><p className="eyebrow">Resmî sonuçlar</p><h1 className="mt-2 font-display text-5xl font-black uppercase tracking-[-.04em] sm:text-7xl">{meta?.edition || 'Nexavision'}</h1><p className="mt-3 text-pink-50/60">{meta?.juriesSubmitted} jüri oyununun {meta?.juriesRevealed} tanesi açıklandı</p></div>
         <button className="btn-secondary" onClick={() => document.documentElement.requestFullscreen?.()}><Expand className="h-4 w-4" />Sunum modu</button>
@@ -428,6 +541,8 @@ export function ResultsPage() {
       {guestPresentation && guestStage === 'title' && <div className={`pointer-events-none fixed inset-0 z-[140] grid place-items-center px-6 text-center transition-opacity duration-1000 ${guestIsVisible ? 'opacity-100' : 'opacity-0'}`} role="status" aria-live="assertive"><p className="font-display text-4xl font-black uppercase tracking-[-.035em] text-white sm:text-6xl lg:text-7xl">Sürpriz bir konuk geliyor!</p></div>}
       {guestPresentation && guestStage === 'video' && <div className={`pointer-events-none fixed inset-x-0 top-5 z-[140] text-center transition-opacity duration-1000 ${guestIsVisible ? 'opacity-100' : 'opacity-0'}`}><span className="font-display text-xl font-black tracking-[.45em] text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.8)] sm:text-3xl">NEXAVISION</span></div>}
       {guestPresentation && guestAudioBlocked && <button className={`fixed bottom-8 left-1/2 z-[150] -translate-x-1/2 rounded-full border border-white/30 bg-white/15 px-6 py-3 text-sm font-bold text-white backdrop-blur-xl transition-opacity duration-500 ${guestIsVisible ? 'opacity-100' : 'opacity-0'}`} onClick={enableGuestAudio}>Konuk sesini aç</button>}
+      {winnerPresentation && <div className={`pointer-events-none fixed inset-0 z-[120] bg-black transition-opacity duration-1000 ${winnerIsVisible ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true" />}
+      {winnerPresentation && winnerAudioBlocked && <button className={`fixed bottom-8 left-1/2 z-[150] -translate-x-1/2 rounded-full border border-white/30 bg-white/15 px-6 py-3 text-sm font-bold text-white backdrop-blur-xl transition-opacity duration-500 ${winnerIsVisible ? 'opacity-100' : 'opacity-0'}`} onClick={enableWinnerAudio}>Birinci videosunun sesini aç</button>}
     </>
   );
 }

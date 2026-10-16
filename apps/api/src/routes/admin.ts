@@ -32,7 +32,8 @@ adminRoutes.use('/*', requireAdmin);
 adminRoutes.get('/dashboard', async (context) => {
   const edition = await context.env.DB.prepare(`SELECT id, name, slug, year, phase, results_public AS resultsPublic,
     public_status_enabled AS publicStatusEnabled, reveal_count AS revealCount, voting_deadline AS votingDeadline,
-    results_opened_at AS resultsOpenedAt, guest_active AS guestActive, guest_started_at AS guestStartedAt
+    results_opened_at AS resultsOpenedAt, guest_active AS guestActive, guest_started_at AS guestStartedAt,
+    winner_active AS winnerActive, winner_started_at AS winnerStartedAt
     FROM editions WHERE is_current = 1`).first();
   if (!edition) return context.json({ edition: null, stats: null, juries: [] });
   const onlineSince = new Date(Date.now() - 90_000).toISOString();
@@ -53,7 +54,7 @@ adminRoutes.get('/dashboard', async (context) => {
   `).bind(onlineSince, onlineSince, new Date().toISOString(), edition.id).all();
   const submitted = juries.results.filter((item) => item.status === 'submitted').length;
   const online = juries.results.filter((item) => item.status === 'online' || item.status === 'voting').length;
-  return context.json({ edition: { ...edition, resultsPublic: Boolean(edition.resultsPublic), publicStatusEnabled: Boolean(edition.publicStatusEnabled), guestActive: Boolean(edition.guestActive) }, stats: { total: juries.results.length, submitted, online, remaining: juries.results.length - submitted }, juries: juries.results });
+  return context.json({ edition: { ...edition, resultsPublic: Boolean(edition.resultsPublic), publicStatusEnabled: Boolean(edition.publicStatusEnabled), guestActive: Boolean(edition.guestActive), winnerActive: Boolean(edition.winnerActive) }, stats: { total: juries.results.length, submitted, online, remaining: juries.results.length - submitted }, juries: juries.results });
 });
 
 adminRoutes.get('/editions', async (context) => {
@@ -73,12 +74,13 @@ adminRoutes.post('/editions', async (context) => {
 
 adminRoutes.patch('/editions/:editionId', async (context) => {
   const id = context.req.param('editionId');
-  const body = await context.req.json<{ phase?: string; resultsPublic?: boolean; publicStatusEnabled?: boolean; revealCount?: number; votingDeadline?: string | null; makeCurrent?: boolean; guestActive?: boolean }>();
+  const body = await context.req.json<{ phase?: string; resultsPublic?: boolean; publicStatusEnabled?: boolean; revealCount?: number; votingDeadline?: string | null; makeCurrent?: boolean; guestActive?: boolean; winnerActive?: boolean }>();
   if (body.phase && !['draft', 'open', 'closed'].includes(body.phase)) return context.json({ error: { code: 'INVALID_PHASE', message: 'Invalid voting phase.' } }, 400);
   if (body.makeCurrent) await context.env.DB.prepare('UPDATE editions SET is_current = 0 WHERE is_current = 1').run();
   const current = await context.env.DB.prepare(`SELECT results_public AS resultsPublic, results_opened_at AS resultsOpenedAt,
-    guest_active AS guestActive, guest_started_at AS guestStartedAt FROM editions WHERE id = ?`)
-    .bind(id).first<{ resultsPublic: number; resultsOpenedAt: string | null; guestActive: number; guestStartedAt: string | null }>();
+    guest_active AS guestActive, guest_started_at AS guestStartedAt,
+    winner_active AS winnerActive, winner_started_at AS winnerStartedAt FROM editions WHERE id = ?`)
+    .bind(id).first<{ resultsPublic: number; resultsOpenedAt: string | null; guestActive: number; guestStartedAt: string | null; winnerActive: number; winnerStartedAt: string | null }>();
   if (!current) return context.json({ error: { code: 'NOT_FOUND', message: 'Edition not found.' } }, 404);
   const now = new Date().toISOString();
   const resultsOpenedAt = body.resultsPublic === undefined
@@ -86,23 +88,39 @@ adminRoutes.patch('/editions/:editionId', async (context) => {
     : body.resultsPublic
       ? (current.resultsPublic ? current.resultsOpenedAt : now)
       : null;
-  const guestActive = body.resultsPublic === false ? false : (body.guestActive ?? Boolean(current.guestActive));
-  const guestStartedAt = body.resultsPublic === false
+  let guestActive = body.resultsPublic === false ? false : (body.guestActive ?? Boolean(current.guestActive));
+  let guestStartedAt = body.resultsPublic === false
     ? null
     : body.guestActive === undefined
       ? current.guestStartedAt
       : body.guestActive
         ? now
         : null;
+  let winnerActive = body.resultsPublic === false ? false : (body.winnerActive ?? Boolean(current.winnerActive));
+  let winnerStartedAt = body.resultsPublic === false
+    ? null
+    : body.winnerActive === undefined
+      ? current.winnerStartedAt
+      : body.winnerActive
+        ? now
+        : null;
+  if (body.guestActive === true) {
+    winnerActive = false;
+    winnerStartedAt = null;
+  }
+  if (body.winnerActive === true) {
+    guestActive = false;
+    guestStartedAt = null;
+  }
   await context.env.DB.prepare(`UPDATE editions SET
     phase = COALESCE(?, phase), results_public = COALESCE(?, results_public),
     public_status_enabled = COALESCE(?, public_status_enabled), reveal_count = COALESCE(?, reveal_count),
     voting_deadline = CASE WHEN ? = 1 THEN ? ELSE voting_deadline END,
-    results_opened_at = ?, guest_active = ?, guest_started_at = ?,
+    results_opened_at = ?, guest_active = ?, guest_started_at = ?, winner_active = ?, winner_started_at = ?,
     is_current = CASE WHEN ? = 1 THEN 1 ELSE is_current END, updated_at = ? WHERE id = ?`)
     .bind(body.phase ?? null, body.resultsPublic === undefined ? null : Number(body.resultsPublic), body.publicStatusEnabled === undefined ? null : Number(body.publicStatusEnabled),
       body.revealCount ?? null, body.votingDeadline === undefined ? 0 : 1, body.votingDeadline ?? null, resultsOpenedAt,
-      Number(guestActive), guestStartedAt, body.makeCurrent ? 1 : 0, now, id).run();
+      Number(guestActive), guestStartedAt, Number(winnerActive), winnerStartedAt, body.makeCurrent ? 1 : 0, now, id).run();
   await audit(context.env.DB, 'admin', context.get('adminSessionId'), 'edition.updated', 'edition', id, id, { fields: Object.keys(body) });
   return context.json({ updated: true });
 });
