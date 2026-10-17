@@ -20,10 +20,10 @@ export function HomePage() {
   const submitted = statuses.filter((item) => item.status === 'submitted').length || contest?.submitted || 0;
   const phaseLabel = contest?.phase === 'open' ? 'Oylama açık' : contest?.phase === 'closed' ? 'Oylama kapandı' : 'Çok yakında';
   const deadline = useMemo(() => contest?.votingDeadline ? new Intl.DateTimeFormat('tr-TR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(contest.votingDeadline)) : null, [contest]);
-  const statusPublic = contest?.publicStatusEnabled !== false;
+  const statusPublic = contest?.publicStatusEnabled === true && statuses.length > 0;
   const visibleStatuses = statusPublic
-    ? (statuses.length ? statuses : fallbackStatuses).slice(0, 6)
-    : (countries.length ? countries : fallbackStatuses).slice(0, 6).map((item) => ({ ...item, status: 'offline' as const }));
+    ? statuses.slice(0, 6)
+    : countries.slice(0, 6).map((item) => ({ ...item, status: 'offline' as const }));
 
   return (
     <>
@@ -53,6 +53,7 @@ export function HomePage() {
                 <div className="flex items-center gap-3"><span className="text-2xl">{item.flag}</span><span className="font-bold">{item.country}</span></div>{statusPublic && <StatusBadge status={item.status} />}
               </div>
             ))}</div>
+            {visibleStatuses.length === 0 && <p className="rounded-xl border border-dashed border-white/15 px-4 py-6 text-center text-sm text-pink-50/45">Katılımcı ülkeler henüz eklenmedi.</p>}
             {statusPublic && <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-gradient-to-r from-orange via-pink to-softpink transition-all" style={{ width: `${contest?.participants ? Math.round(submitted / contest.participants * 100) : 36}%` }} /></div>}
           </div>
         </div>
@@ -74,14 +75,6 @@ function StatusBadge({ status }: { status: Status['status'] }) {
   const labels = { offline: 'Çevrim dışı', online: 'Çevrim içi', voting: 'Oyluyor', submitted: 'Gönderildi' };
   return <span className={`rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wide ${styles[status]}`}>{labels[status]}</span>;
 }
-
-const fallbackStatuses: Status[] = [
-  { countryId: '1', country: 'İsveç', flag: '🇸🇪', status: 'submitted' },
-  { countryId: '2', country: 'İtalya', flag: '🇮🇹', status: 'voting' },
-  { countryId: '3', country: 'Ukrayna', flag: '🇺🇦', status: 'online' },
-  { countryId: '4', country: 'Fransa', flag: '🇫🇷', status: 'submitted' },
-  { countryId: '5', country: 'Norveç', flag: '🇳🇴', status: 'offline' },
-];
 
 const features: Array<{ Icon: LucideIcon; title: string; copy: string }> = [
   { Icon: Sparkles, title: 'Tüm şarkıları keşfet', copy: 'Sanatçılarla tanışın, şarkıları dinleyin ve oylamadan önce favorilerinizi bulun.' },
