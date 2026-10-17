@@ -42,8 +42,8 @@ export function HomePage() {
             {deadline && <span className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-orange" />Bitiş: {deadline}</span>}
           </div>
         </div>
-        <div className="stage-orbit mx-auto flex aspect-square w-full max-w-[590px] items-center justify-center p-7 sm:p-14">
-          <div className="panel relative z-10 w-full max-w-md overflow-hidden p-5 sm:p-7">
+        <div className="hero-stage-orbit mx-auto flex aspect-square w-full max-w-[590px] items-center justify-center p-7 sm:p-14">
+          <div className="panel hero-status-panel relative z-10 w-full max-w-md overflow-hidden p-5 sm:p-7">
             <div className="mb-5 flex items-center justify-between">
               <div><p className="eyebrow">{statusPublic ? 'Canlı jüri durumu' : 'Jüri ülkeleri'}</p><h2 className="mt-1 font-display text-2xl font-bold">{statusPublic ? 'Sahnenin dört bir yanı' : 'Herkese gösterim şu an kapalı'}</h2></div>
               <span className={`grid h-11 w-11 place-items-center rounded-full shadow-lg ${statusPublic ? 'bg-gradient-to-br from-pink to-orange shadow-pink/30' : 'border border-white/15 bg-white/10 text-pink-50/55'}`}>{statusPublic ? <Radio className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}</span>

@@ -74,6 +74,10 @@ body:has(.results-opening) { overflow: hidden; }
 .stage-orbit { position: relative; border-radius: 50%; background: radial-gradient(circle at 50% 50%, rgba(255,255,255,.14) 0 17%, rgba(255,63,173,.4) 18% 19%, transparent 20% 30%, rgba(255,145,202,.22) 31% 33%, transparent 34% 47%, rgba(255,104,45,.2) 48% 50%, transparent 51%); }
 .stage-orbit::before { content: ''; position: absolute; inset: 17%; border-radius: 50%; border: 1px solid rgba(255,255,255,.35); box-shadow: 0 0 40px rgba(229,0,164,.45); animation: spin 16s linear infinite; }
 .stage-orbit::after { content: ''; position: absolute; inset: 7%; border: 1px dashed rgba(255,255,255,.22); border-radius: 45% 55% 50% 50%; animation: spin 22s linear infinite reverse; }
+.hero-stage-orbit { position: relative; isolation: isolate; }
+.hero-stage-orbit::before { content: ''; position: absolute; inset: 6%; z-index: 0; border: 1px dashed rgba(168,255,223,.26); border-radius: 47% 53% 49% 51%; box-shadow: 0 0 36px rgba(53,230,174,.07); animation: spin 24s linear infinite reverse; }
+.hero-stage-orbit::after { content: ''; position: absolute; inset: 14%; z-index: 0; border-radius: 42% 58% 54% 46%; background: radial-gradient(ellipse at 30% 28%, rgba(104,217,243,.17), transparent 45%), radial-gradient(ellipse at 72% 68%, rgba(53,230,174,.2), transparent 52%); filter: blur(34px); opacity: .68; animation: heroStatusHaze 9s ease-in-out infinite alternate; }
+.hero-status-panel { background: linear-gradient(145deg, rgba(214,255,244,.105), rgba(5,58,49,.78) 36%, rgba(2,34,30,.88) 100%); box-shadow: inset 0 1px 0 rgba(232,255,249,.25), 0 24px 80px rgba(0,18,16,.42), 0 0 45px rgba(53,230,174,.08); }
 .hero-number { text-shadow: 0 5px 28px rgba(53,230,174,.38); }
 .nav-link { position: relative; }
 .nav-link::after { content: ''; position: absolute; left: 50%; right: 50%; bottom: -12px; height: 3px; border-radius: 999px; background: linear-gradient(90deg, #35e6ae, #68d9f3); box-shadow: 0 0 18px rgba(53,230,174,.5); transition: left .25s ease, right .25s ease; }
@@ -162,6 +166,7 @@ table tbody tr:hover { background-color: rgba(255,63,173,.08); }
 @keyframes pageAuroraIn { from { opacity: 0; transform: translateY(10px); filter: blur(5px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
 @keyframes pageAuroraSweep { 0% { transform: translateX(-115%); opacity: 0; } 35% { opacity: 1; } 100% { transform: translateX(115%); opacity: 0; } }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes heroStatusHaze { to { transform: translate3d(2vw, -1vh, 0) rotate(5deg) scale(1.08); opacity: .82; } }
 @keyframes revealRow { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes juryRevealIntro { 0% { opacity: 0; transform: scale(.82) translateY(28px); } 22%, 78% { opacity: 1; transform: scale(1) translateY(0); } 100% { opacity: 0; transform: scale(1.08); } }
 @keyframes juryPointIn { from { opacity: 0; transform: translateY(-22px) scale(.94); } to { opacity: 1; transform: translateY(0) scale(1); } }
@@ -196,7 +201,7 @@ table tbody tr:hover { background-color: rgba(255,63,173,.08); }
   .ribbon-one { left: -42vw; top: -38vh; border-bottom-width: 7vh; }
   .ribbon-two { right: -56vw; top: -28vh; border-bottom-width: 4.5vh; }
   .ribbon-three { left: -34vw; top: -20vh; border-bottom-width: 3vh; }
-  .stage-orbit { border-radius: 2.5rem; }
+  .stage-orbit, .hero-stage-orbit { border-radius: 2.5rem; }
   .opening-title-lockup { padding: 3rem .25rem 2rem; }
   .opening-title-kicker { margin-bottom: 1rem; letter-spacing: .28em; }
   .opening-word-by { width: min(74vw, 420px); }
