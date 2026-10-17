@@ -26,9 +26,9 @@ export function HomePage() {
           <div className="broadcast-chip mb-7"><span className="status-dot animate-pulseSoft bg-orange shadow-[0_0_14px_#ff682d]" /> {phaseLabel}</div>
           <p className="eyebrow mb-4">Uluslararası hayran yarışması</p>
           <h1 className="max-w-4xl font-display text-6xl font-black uppercase leading-[.86] tracking-[-0.055em] sm:text-8xl lg:text-[6.3rem]">
-            Tek sahne.<br /><span className="text-gradient">Her ses.</span>
+            Kuzeyin ışığında.<br /><span className="text-gradient">Her ses.</span>
           </h1>
-          <p className="mt-7 max-w-xl text-lg leading-8 text-pink-50/75">{contest?.name || 'Nexavision'}’a hoş geldiniz—her ülkenin bir şarkı getirdiği, her jürinin geceye yön verdiği ve her puanın gösteriyi değiştirdiği yarışma.</p>
+          <p className="mt-7 max-w-xl text-lg leading-8 text-pink-50/75">{contest?.name || 'Nexavision'} yeni döneminde kuzeyin ışıkları altında yeniden buluşuyor—her ülkenin bir şarkı getirdiği, her jürinin geceye yön verdiği ve her puanın gösteriyi değiştirdiği yarışma.</p>
           <div className="mt-9 flex flex-wrap gap-3"><Link to="/participants" className="btn-primary">Şarkıları keşfet <ArrowRight className="h-4 w-4" /></Link><Link to="/jury" className="btn-secondary">Jüri odasına gir</Link></div>
           <div className="mt-11 flex flex-wrap gap-x-9 gap-y-4 border-t border-white/20 pt-6 text-sm text-pink-100/60">
             <span><strong className="hero-number mr-2 font-display text-2xl text-white">{contest?.participants ?? '—'}</strong>ülke</span>
