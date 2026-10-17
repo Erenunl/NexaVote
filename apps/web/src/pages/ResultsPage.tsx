@@ -60,7 +60,7 @@ const WINNER_TIMING = {
 } as const;
 const openingAudioUrl = `${import.meta.env.BASE_URL}results-opening.mp3`;
 const openingVideoUrl = `${import.meta.env.BASE_URL}results-opening.mp4`;
-const openingLogoUrl = `${import.meta.env.BASE_URL}nexavision-lyon-2026-logo.png`;
+const openingLogoUrl = `${import.meta.env.BASE_URL}nexavision-helsinki-2026-logo.png`;
 const guestVideoUrl = `${import.meta.env.BASE_URL}guest-performance.mp4`;
 const winnerVideoUrl = `${import.meta.env.BASE_URL}winner-studio.mp4`;
 
