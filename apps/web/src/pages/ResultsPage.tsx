@@ -504,6 +504,9 @@ export function ResultsPage() {
   const openingLogoVisible = openingElapsed !== null
     && openingElapsed >= OPENING_TIMING.logoAt
     && openingElapsed < OPENING_TIMING.logoFadeOutAt;
+  const openingAuroraVisible = openingElapsed !== null
+    && openingElapsed >= 650
+    && openingElapsed < OPENING_TIMING.videoAt;
   const guestIsVisible = guestPresentation?.phase === 'playing';
   const winnerIsVisible = winnerPresentation?.phase === 'playing';
   const winnerVideoVisible = winnerElapsed !== null && winnerElapsed >= WINNER_TIMING.videoAt;
@@ -543,14 +546,23 @@ export function ResultsPage() {
     </section>
 
       {openingStage && <div className="results-opening fixed inset-0 z-[100] overflow-hidden bg-black" role="status" aria-live="assertive">
-        <div className={`results-opening-stars absolute inset-0 transition-opacity duration-1000 ${openingStage === 'black' ? 'opacity-0' : 'opacity-100'}`} />
+        <div className={`results-opening-stars absolute inset-0 transition-opacity duration-[1800ms] ${openingAuroraVisible ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true">
+          <span className="opening-aurora opening-aurora-one" />
+          <span className="opening-aurora opening-aurora-two" />
+          <span className="opening-aurora opening-aurora-three" />
+          <span className="opening-aurora opening-aurora-four" />
+          <span className="opening-aurora-horizon" />
+        </div>
         <div className={`pointer-events-none absolute inset-0 z-10 grid place-items-center px-6 transition-opacity duration-[800ms] ${openingLogoVisible ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true">
           <img className="h-auto w-[min(88vw,1100px)] object-contain" src={openingLogoUrl} alt="" />
         </div>
         {openingElapsed !== null && openingElapsed >= OPENING_TIMING.titleAt && openingElapsed < OPENING_TIMING.titleEndAt && <div className="results-opening-title absolute inset-0 z-10">
-          <span className="opening-word opening-word-united">UNITED</span>
-          <span className="opening-word opening-word-by">BY</span>
-          <span className="opening-word opening-word-music">MUSIC</span>
+          <div className="opening-title-lockup">
+            <span className="opening-title-kicker">NEXAVISION · HELSINKI 2026</span>
+            <span className="opening-word opening-word-united">UNITED</span>
+            <span className="opening-word opening-word-by"><i />BY<i /></span>
+            <span className="opening-word opening-word-music">MUSIC</span>
+          </div>
         </div>}
         {openingStage === 'video' && !videoReady && <div className="results-opening-placeholder absolute inset-0 grid place-items-center">
           <div className="opening-beam opening-beam-one" /><div className="opening-beam opening-beam-two" /><div className="opening-beam opening-beam-three" />
