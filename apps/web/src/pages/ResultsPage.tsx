@@ -44,10 +44,10 @@ const REVEAL_TIMING = {
 } as const;
 const OPENING_TIMING = {
   audioStartSeconds: 0,
-  mainAudioAt: 6270,
+  mainAudioAt: 6250,
   logoAt: 500,
-  logoFadeOutAt: 5470,
-  titleAt: 19270,
+  logoFadeOutAt: 5450,
+  titleAt: 18800,
   titleEndAt: 25270,
   videoAt: 25270,
   endAt: 30340,
@@ -62,7 +62,7 @@ const WINNER_TIMING = {
   fadeDuration: 1200,
 } as const;
 const openingAudioUrl = `${import.meta.env.BASE_URL}results-opening-main.mp3`;
-const openingStingerUrl = `${import.meta.env.BASE_URL}results-opening-stinger.mp4`;
+const openingStingerUrl = `${import.meta.env.BASE_URL}results-opening-stinger.mp3`;
 const openingVideoUrl = `${import.meta.env.BASE_URL}results-opening.mp4`;
 const openingLogoUrl = `${import.meta.env.BASE_URL}nexavision-helsinki-2026-logo.png`;
 const guestVideoUrl = `${import.meta.env.BASE_URL}guest-performance.mp4`;
@@ -105,7 +105,7 @@ export function ResultsPage() {
   const stingerStarted = useRef(false);
   const stingerAttempted = useRef(false);
   const audioAttempted = useRef(false);
-  const stingerRef = useRef<HTMLVideoElement>(null);
+  const stingerRef = useRef<HTMLAudioElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const guestVideoRef = useRef<HTMLVideoElement>(null);
@@ -564,10 +564,15 @@ export function ResultsPage() {
   const openingAuroraVisible = openingElapsed !== null
     && openingElapsed >= 650
     && openingElapsed < OPENING_TIMING.videoAt;
+  const openingStingerVisible = openingElapsed !== null
+    && openingElapsed < OPENING_TIMING.mainAudioAt;
+  const openingBuildVisible = openingElapsed !== null
+    && openingElapsed >= OPENING_TIMING.mainAudioAt
+    && openingElapsed < OPENING_TIMING.titleAt;
   const guestIsVisible = guestPresentation?.phase === 'playing';
   const winnerIsVisible = winnerPresentation?.phase === 'playing';
   const winnerVideoVisible = winnerElapsed !== null && winnerElapsed >= WINNER_TIMING.videoAt;
-  const openingStinger = <video key="results-opening-stinger" ref={stingerRef} className="pointer-events-none fixed h-px w-px opacity-0" preload="auto" playsInline src={openingStingerUrl} aria-hidden="true" />;
+  const openingStinger = <audio key="results-opening-stinger" ref={stingerRef} preload="auto" src={openingStingerUrl} />;
   const openingAudio = <audio key="results-opening-audio" ref={audioRef} preload="auto" src={openingAudioUrl} />;
   const openingVideo = <video key="results-opening-video" ref={videoRef} className={`pointer-events-none fixed inset-0 z-[110] h-full w-full object-cover object-center transition-opacity duration-700 ${openingStage === 'video' && videoReady ? 'opacity-100' : 'opacity-0'}`} src={openingVideoUrl} muted playsInline preload="auto" aria-hidden="true" onLoadedData={() => setVideoReady(true)} onCanPlay={() => setVideoReady(true)} onPlaying={() => setVideoReady(true)} onEnded={finishOpening} onError={() => setVideoReady(false)} />;
   const guestVideo = <video key="guest-performance-video" ref={guestVideoRef} className={`pointer-events-none fixed inset-0 z-[130] h-full w-full object-cover object-center transition-opacity duration-1000 ${guestIsVisible && guestStage === 'video' && guestVideoReady ? 'opacity-100' : 'opacity-0'}`} src={guestVideoUrl} playsInline preload="auto" aria-hidden="true" onLoadedData={() => setGuestVideoReady(true)} onCanPlay={() => setGuestVideoReady(true)} onPlaying={() => setGuestVideoReady(true)} onError={() => setGuestVideoReady(false)} />;
@@ -611,8 +616,25 @@ export function ResultsPage() {
           <span className="opening-aurora opening-aurora-four" />
           <span className="opening-aurora-horizon" />
         </div>
+        {openingStingerVisible && <div className="opening-stinger-show pointer-events-none absolute inset-0 z-[6]" aria-hidden="true">
+          <span className="opening-stinger-ring" />
+          <span className="opening-stinger-beam opening-stinger-beam-one" />
+          <span className="opening-stinger-beam opening-stinger-beam-two" />
+          <span className="opening-stinger-beam opening-stinger-beam-three" />
+          <span className="opening-stinger-glint" />
+          <span className="opening-stinger-flash" />
+          <div className="opening-stinger-spectrum">{Array.from({ length: 11 }, (_, index) => <i key={index} />)}</div>
+          <div className="opening-stinger-caption"><small>NEXAVISION · HELSINKI 2026</small><strong>SAHNE HAZIR</strong></div>
+        </div>}
+        {openingBuildVisible && <div className="opening-build-show pointer-events-none absolute inset-0 z-[7]" aria-hidden="true">
+          <span className="opening-build-orbit" />
+          <span className="opening-build-sweep opening-build-sweep-one" />
+          <span className="opening-build-sweep opening-build-sweep-two" />
+          <div className="opening-build-lockup"><small>KUZEYİN IŞIĞINDA</small><strong>NEXAVISION</strong><em>HER SES.</em></div>
+          <div className="opening-build-meter">{Array.from({ length: 17 }, (_, index) => <i key={index} />)}</div>
+        </div>}
         <div className={`pointer-events-none absolute inset-0 z-10 grid place-items-center px-6 transition-opacity duration-[800ms] ${openingLogoVisible ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true">
-          <img className="h-auto w-[min(88vw,1100px)] object-contain" src={openingLogoUrl} alt="" />
+          <img className="opening-stinger-logo h-auto w-[min(88vw,1100px)] object-contain" src={openingLogoUrl} alt="" />
         </div>
         {openingElapsed !== null && openingElapsed >= OPENING_TIMING.titleAt && openingElapsed < OPENING_TIMING.titleEndAt && <div className="results-opening-title absolute inset-0 z-10">
           <div className="opening-title-lockup">
