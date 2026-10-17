@@ -34,7 +34,9 @@ adminRoutes.get('/dashboard', async (context) => {
   const edition = await context.env.DB.prepare(`SELECT id, name, slug, year, phase, results_public AS resultsPublic,
     public_status_enabled AS publicStatusEnabled, reveal_count AS revealCount, voting_deadline AS votingDeadline,
     results_opened_at AS resultsOpenedAt, guest_active AS guestActive, guest_started_at AS guestStartedAt,
-    winner_active AS winnerActive, winner_started_at AS winnerStartedAt
+    winner_active AS winnerActive, winner_started_at AS winnerStartedAt,
+    aurora_mode AS auroraMode, rehearsal_public AS rehearsalPublic,
+    rehearsal_opened_at AS rehearsalOpenedAt
     FROM editions WHERE is_current = 1`).first();
   if (!edition) return context.json({ edition: null, stats: null, juries: [] });
   const onlineSince = new Date(Date.now() - 90_000).toISOString();
@@ -55,7 +57,7 @@ adminRoutes.get('/dashboard', async (context) => {
   `).bind(onlineSince, onlineSince, new Date().toISOString(), edition.id).all();
   const submitted = juries.results.filter((item) => item.status === 'submitted').length;
   const online = juries.results.filter((item) => item.status === 'online' || item.status === 'voting').length;
-  return context.json({ edition: { ...edition, resultsPublic: Boolean(edition.resultsPublic), publicStatusEnabled: Boolean(edition.publicStatusEnabled), guestActive: Boolean(edition.guestActive), winnerActive: Boolean(edition.winnerActive) }, stats: { total: juries.results.length, submitted, online, remaining: juries.results.length - submitted }, juries: juries.results });
+  return context.json({ edition: { ...edition, resultsPublic: Boolean(edition.resultsPublic), publicStatusEnabled: Boolean(edition.publicStatusEnabled), guestActive: Boolean(edition.guestActive), winnerActive: Boolean(edition.winnerActive), rehearsalPublic: Boolean(edition.rehearsalPublic) }, stats: { total: juries.results.length, submitted, online, remaining: juries.results.length - submitted }, juries: juries.results });
 });
 
 adminRoutes.get('/editions', async (context) => {
@@ -75,19 +77,26 @@ adminRoutes.post('/editions', async (context) => {
 
 adminRoutes.patch('/editions/:editionId', async (context) => {
   const id = context.req.param('editionId');
-  const body = await context.req.json<{ phase?: string; resultsPublic?: boolean; publicStatusEnabled?: boolean; revealCount?: number; votingDeadline?: string | null; makeCurrent?: boolean; guestActive?: boolean; winnerActive?: boolean }>();
+  const body = await context.req.json<{ phase?: string; resultsPublic?: boolean; publicStatusEnabled?: boolean; revealCount?: number; votingDeadline?: string | null; makeCurrent?: boolean; guestActive?: boolean; winnerActive?: boolean; auroraMode?: string; rehearsalPublic?: boolean }>();
   if (body.phase && !['draft', 'open', 'closed'].includes(body.phase)) return context.json({ error: { code: 'INVALID_PHASE', message: 'Invalid voting phase.' } }, 400);
+  if (body.auroraMode && !['calm', 'live', 'ice', 'finale'].includes(body.auroraMode)) return context.json({ error: { code: 'INVALID_AURORA_MODE', message: 'Invalid aurora mode.' } }, 400);
   if (body.makeCurrent) await context.env.DB.prepare('UPDATE editions SET is_current = 0 WHERE is_current = 1').run();
   const current = await context.env.DB.prepare(`SELECT results_public AS resultsPublic, results_opened_at AS resultsOpenedAt,
     guest_active AS guestActive, guest_started_at AS guestStartedAt,
-    winner_active AS winnerActive, winner_started_at AS winnerStartedAt FROM editions WHERE id = ?`)
-    .bind(id).first<{ resultsPublic: number; resultsOpenedAt: string | null; guestActive: number; guestStartedAt: string | null; winnerActive: number; winnerStartedAt: string | null }>();
+    winner_active AS winnerActive, winner_started_at AS winnerStartedAt,
+    rehearsal_public AS rehearsalPublic, rehearsal_opened_at AS rehearsalOpenedAt FROM editions WHERE id = ?`)
+    .bind(id).first<{ resultsPublic: number; resultsOpenedAt: string | null; guestActive: number; guestStartedAt: string | null; winnerActive: number; winnerStartedAt: string | null; rehearsalPublic: number; rehearsalOpenedAt: string | null }>();
   if (!current) return context.json({ error: { code: 'NOT_FOUND', message: 'Edition not found.' } }, 404);
   const now = new Date().toISOString();
   const resultsOpenedAt = body.resultsPublic === undefined
     ? current.resultsOpenedAt
     : body.resultsPublic
       ? (current.resultsPublic ? current.resultsOpenedAt : now)
+      : null;
+  const rehearsalOpenedAt = body.rehearsalPublic === undefined
+    ? current.rehearsalOpenedAt
+    : body.rehearsalPublic
+      ? (current.rehearsalPublic ? current.rehearsalOpenedAt : now)
       : null;
   let guestActive = body.resultsPublic === false ? false : (body.guestActive ?? Boolean(current.guestActive));
   let guestStartedAt = body.resultsPublic === false
@@ -118,10 +127,14 @@ adminRoutes.patch('/editions/:editionId', async (context) => {
     public_status_enabled = COALESCE(?, public_status_enabled), reveal_count = COALESCE(?, reveal_count),
     voting_deadline = CASE WHEN ? = 1 THEN ? ELSE voting_deadline END,
     results_opened_at = ?, guest_active = ?, guest_started_at = ?, winner_active = ?, winner_started_at = ?,
-    is_current = CASE WHEN ? = 1 THEN 1 ELSE is_current END, updated_at = ? WHERE id = ?`)
+    aurora_mode = COALESCE(?, aurora_mode), rehearsal_public = COALESCE(?, rehearsal_public),
+    rehearsal_opened_at = ?, is_current = CASE WHEN ? = 1 THEN 1 ELSE is_current END,
+    updated_at = ? WHERE id = ?`)
     .bind(body.phase ?? null, body.resultsPublic === undefined ? null : Number(body.resultsPublic), body.publicStatusEnabled === undefined ? null : Number(body.publicStatusEnabled),
       body.revealCount ?? null, body.votingDeadline === undefined ? 0 : 1, body.votingDeadline ?? null, resultsOpenedAt,
-      Number(guestActive), guestStartedAt, Number(winnerActive), winnerStartedAt, body.makeCurrent ? 1 : 0, now, id).run();
+      Number(guestActive), guestStartedAt, Number(winnerActive), winnerStartedAt, body.auroraMode ?? null,
+      body.rehearsalPublic === undefined ? null : Number(body.rehearsalPublic), rehearsalOpenedAt,
+      body.makeCurrent ? 1 : 0, now, id).run();
   await audit(context.env.DB, 'admin', context.get('adminSessionId'), 'edition.updated', 'edition', id, id, { fields: Object.keys(body) });
   return context.json({ updated: true });
 });
@@ -223,9 +236,11 @@ adminRoutes.get('/results', async (context) => {
     WHERE b.edition_id = ? ORDER BY b.submitted_at, bs.points DESC`).bind(editionId).all();
   const submittedJuries = await context.env.DB.prepare(`SELECT jury.id AS countryId, jury.name AS country,
     jury.flag_emoji AS flag, b.submitted_at AS submittedAt, jr.reveal_order AS revealOrder,
-    jr.revealed_at AS revealedAt
+    jr.revealed_at AS revealedAt, rr.reveal_order AS rehearsalRevealOrder,
+    rr.revealed_at AS rehearsalRevealedAt
     FROM ballots b JOIN countries jury ON jury.id = b.jury_country_id
     LEFT JOIN jury_reveals jr ON jr.edition_id = b.edition_id AND jr.jury_country_id = b.jury_country_id
+    LEFT JOIN rehearsal_jury_reveals rr ON rr.edition_id = b.edition_id AND rr.jury_country_id = b.jury_country_id
     WHERE b.edition_id = ?
     ORDER BY CASE WHEN jr.reveal_order IS NULL THEN 1 ELSE 0 END, jr.reveal_order, b.submitted_at, jury.name`)
     .bind(editionId).all();
@@ -302,6 +317,46 @@ adminRoutes.delete('/editions/:editionId/reveals/:countryId', async (context) =>
     .bind(editionId, countryId).run();
   await audit(context.env.DB, 'admin', context.get('adminSessionId'), 'results.jury_reveal_removed', 'country', countryId, editionId, reveal);
   return context.json({ removed: true });
+});
+
+adminRoutes.post('/editions/:editionId/rehearsal/reveals/:countryId', async (context) => {
+  const { editionId, countryId } = context.req.param();
+  const ballot = await context.env.DB.prepare('SELECT id FROM ballots WHERE edition_id = ? AND jury_country_id = ?')
+    .bind(editionId, countryId).first();
+  if (!ballot) return context.json({ error: { code: 'JURY_NOT_SUBMITTED', message: 'This jury has not submitted a ballot yet.' } }, 409);
+  const existing = await context.env.DB.prepare('SELECT reveal_order AS revealOrder FROM rehearsal_jury_reveals WHERE edition_id = ? AND jury_country_id = ?')
+    .bind(editionId, countryId).first<{ revealOrder: number }>();
+  if (existing) return context.json({ error: { code: 'JURY_ALREADY_REVEALED', message: 'This jury has already been revealed in rehearsal.' } }, 409);
+  const order = await context.env.DB.prepare('SELECT COALESCE(MAX(reveal_order), 0) + 1 AS revealOrder FROM rehearsal_jury_reveals WHERE edition_id = ?')
+    .bind(editionId).first<{ revealOrder: number }>();
+  const id = crypto.randomUUID();
+  await context.env.DB.prepare('INSERT INTO rehearsal_jury_reveals (id, edition_id, jury_country_id, reveal_order) VALUES (?, ?, ?, ?)')
+    .bind(id, editionId, countryId, order?.revealOrder ?? 1).run();
+  const reveal = await context.env.DB.prepare('SELECT reveal_order AS revealOrder, revealed_at AS revealedAt FROM rehearsal_jury_reveals WHERE id = ?')
+    .bind(id).first();
+  await audit(context.env.DB, 'admin', context.get('adminSessionId'), 'rehearsal.jury_revealed', 'country', countryId, editionId, reveal ?? {});
+  return context.json({ revealed: true, ...reveal }, 201);
+});
+
+adminRoutes.delete('/editions/:editionId/rehearsal/reveals/:countryId', async (context) => {
+  const { editionId, countryId } = context.req.param();
+  const reveal = await context.env.DB.prepare(`SELECT reveal_order AS revealOrder, revealed_at AS revealedAt
+    FROM rehearsal_jury_reveals WHERE edition_id = ? AND jury_country_id = ?`)
+    .bind(editionId, countryId).first<{ revealOrder: number; revealedAt: string }>();
+  if (!reveal) return context.json({ error: { code: 'JURY_NOT_REVEALED', message: 'This jury has not been revealed in rehearsal.' } }, 404);
+  await context.env.DB.prepare('DELETE FROM rehearsal_jury_reveals WHERE edition_id = ? AND jury_country_id = ?')
+    .bind(editionId, countryId).run();
+  await audit(context.env.DB, 'admin', context.get('adminSessionId'), 'rehearsal.jury_reveal_removed', 'country', countryId, editionId, reveal);
+  return context.json({ removed: true });
+});
+
+adminRoutes.delete('/editions/:editionId/rehearsal/reveals', async (context) => {
+  const editionId = context.req.param('editionId');
+  const count = await context.env.DB.prepare('SELECT COUNT(*) AS count FROM rehearsal_jury_reveals WHERE edition_id = ?')
+    .bind(editionId).first<{ count: number }>();
+  await context.env.DB.prepare('DELETE FROM rehearsal_jury_reveals WHERE edition_id = ?').bind(editionId).run();
+  await audit(context.env.DB, 'admin', context.get('adminSessionId'), 'rehearsal.reset', 'edition', editionId, editionId, { removed: count?.count ?? 0 });
+  return context.json({ removed: count?.count ?? 0 });
 });
 
 adminRoutes.get('/export', async (context) => {

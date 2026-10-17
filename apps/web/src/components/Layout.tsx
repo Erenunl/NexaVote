@@ -2,6 +2,7 @@ import { Menu, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Brand } from './Brand';
+import { api } from '../lib/api';
 
 const links = [
   { to: '/', label: 'Ana Sayfa' },
@@ -12,10 +13,20 @@ const links = [
 
 export function Layout() {
   const [open, setOpen] = useState(false);
+  const [auroraMode, setAuroraMode] = useState('calm');
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo(0, 0); setOpen(false); }, [pathname]);
+  useEffect(() => {
+    let active = true;
+    const loadAtmosphere = () => api<{ edition: { auroraMode?: string } }>('/api/public/contest')
+      .then((data) => { if (active) setAuroraMode(data.edition.auroraMode || 'calm'); })
+      .catch(() => undefined);
+    void loadAtmosphere();
+    const timer = window.setInterval(loadAtmosphere, 4000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
   return (
-    <div className="min-h-screen overflow-x-hidden">
+    <div className={`aurora-mode-${auroraMode} min-h-screen overflow-x-hidden`}>
       <div className="broadcast-bg" aria-hidden="true">
         <span className="spark-field" />
         <span className="ribbon ribbon-one" />
@@ -36,7 +47,7 @@ export function Layout() {
         </div>
         {open && <div className="border-t border-white/20 bg-purple/95 p-5 md:hidden"><div className="flex flex-col gap-3">{links.map((item) => <Link key={item.to} to={item.to} onClick={() => setOpen(false)} className="rounded-xl px-4 py-3 font-semibold text-pink-50 hover:bg-white/10">{item.label}</Link>)}<Link to="/admin" onClick={() => setOpen(false)} className="rounded-xl px-4 py-3 font-semibold text-pink-100/75 hover:bg-white/10">Yönetici</Link><Link to="/jury" onClick={() => setOpen(false)} className="btn-primary mt-2">Jüri girişi</Link></div></div>}
       </header>
-      <main><Outlet /></main>
+      <main key={pathname} className="page-transition"><Outlet /></main>
       <footer className="border-t border-white/15 bg-purple/35 px-5 py-8 text-center text-sm text-pink-100/55 backdrop-blur-lg">Nexavision bağımsız bir hayran yarışması platformudur. Eurovision Şarkı Yarışması ile bağlantılı değildir.</footer>
     </div>
   );

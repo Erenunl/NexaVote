@@ -7,7 +7,8 @@ export const publicRoutes = new Hono<AppEnv>();
 publicRoutes.get('/contest', async (context) => {
   const edition = await context.env.DB.prepare(`
     SELECT id, slug, name, year, phase, results_public AS resultsPublic,
-           public_status_enabled AS publicStatusEnabled, voting_deadline AS votingDeadline
+           public_status_enabled AS publicStatusEnabled, voting_deadline AS votingDeadline,
+           aurora_mode AS auroraMode, rehearsal_public AS rehearsalPublic
     FROM editions WHERE is_current = 1
   `).first();
   if (!edition) return context.json({ error: { code: 'NO_CURRENT_EDITION', message: 'No contest edition is currently configured.' } }, 404);
@@ -16,7 +17,7 @@ publicRoutes.get('/contest', async (context) => {
       (SELECT COUNT(*) FROM ballots b WHERE b.edition_id = ?) AS submitted
     FROM entries WHERE edition_id = ?
   `).bind(edition.id, edition.id).first();
-  return context.json({ edition: { ...edition, resultsPublic: Boolean(edition.resultsPublic), publicStatusEnabled: Boolean(edition.publicStatusEnabled), ...counts } });
+  return context.json({ edition: { ...edition, resultsPublic: Boolean(edition.resultsPublic), publicStatusEnabled: Boolean(edition.publicStatusEnabled), rehearsalPublic: Boolean(edition.rehearsalPublic), ...counts } });
 });
 
 publicRoutes.get('/participants', async (context) => {
@@ -53,17 +54,23 @@ publicRoutes.get('/status', async (context) => {
 });
 
 publicRoutes.get('/results', async (context) => {
+  const rehearsal = context.req.query('mode') === 'rehearsal';
   const edition = await context.env.DB.prepare(`
     SELECT id, name, results_public AS resultsPublic, results_opened_at AS resultsOpenedAt,
       guest_active AS guestActive, guest_started_at AS guestStartedAt,
-      winner_active AS winnerActive, winner_started_at AS winnerStartedAt
+      winner_active AS winnerActive, winner_started_at AS winnerStartedAt,
+      aurora_mode AS auroraMode, rehearsal_public AS rehearsalPublic,
+      rehearsal_opened_at AS rehearsalOpenedAt
     FROM editions WHERE is_current = 1
-  `).first<{ id: string; name: string; resultsPublic: number; resultsOpenedAt: string | null; guestActive: number; guestStartedAt: string | null; winnerActive: number; winnerStartedAt: string | null }>();
-  if (!edition?.resultsPublic) return context.json({ error: { code: 'RESULTS_HIDDEN', message: 'Results have not been published.' } }, 404);
+  `).first<{ id: string; name: string; resultsPublic: number; resultsOpenedAt: string | null; guestActive: number; guestStartedAt: string | null; winnerActive: number; winnerStartedAt: string | null; auroraMode: string; rehearsalPublic: number; rehearsalOpenedAt: string | null }>();
+  if (!edition) return context.json({ error: { code: 'NO_CURRENT_EDITION', message: 'No contest edition is currently configured.' } }, 404);
+  const isPublic = rehearsal ? edition?.rehearsalPublic : edition?.resultsPublic;
+  if (!isPublic) return context.json({ error: { code: 'RESULTS_HIDDEN', message: 'Results have not been published.' } }, 404);
+  const revealTable = rehearsal ? 'rehearsal_jury_reveals' : 'jury_reveals';
   const ballotCount = await context.env.DB.prepare('SELECT COUNT(*) AS count FROM ballots WHERE edition_id = ?').bind(edition.id).first<{ count: number }>();
   const rows = await context.env.DB.prepare(`
     WITH revealed_ballots AS (
-      SELECT b.id FROM ballots b JOIN jury_reveals jr
+      SELECT b.id FROM ballots b JOIN ${revealTable} jr
         ON jr.edition_id = b.edition_id AND jr.jury_country_id = b.jury_country_id
       WHERE b.edition_id = ?
     )
@@ -79,7 +86,7 @@ publicRoutes.get('/results', async (context) => {
     jr.revealed_at AS revealedAt, jury.id AS juryCountryId, jury.name AS juryCountry,
     jury.flag_emoji AS juryFlag, recipient.id AS recipientCountryId, recipient.name AS recipientCountry,
     recipient.flag_emoji AS recipientFlag, bs.points
-    FROM jury_reveals jr JOIN countries jury ON jury.id = jr.jury_country_id
+    FROM ${revealTable} jr JOIN countries jury ON jury.id = jr.jury_country_id
     JOIN ballots b ON b.edition_id = jr.edition_id AND b.jury_country_id = jr.jury_country_id
     JOIN ballot_scores bs ON bs.ballot_id = b.id
     JOIN countries recipient ON recipient.id = bs.recipient_country_id
@@ -100,7 +107,20 @@ publicRoutes.get('/results', async (context) => {
     reveal.scores.push({ countryId: row.recipientCountryId, country: row.recipientCountry, flag: row.recipientFlag, points: row.points });
     return result;
   }, []);
-  return context.json({ edition: edition.name, resultsOpenedAt: edition.resultsOpenedAt, guestActive: Boolean(edition.guestActive), guestStartedAt: edition.guestStartedAt, winnerActive: Boolean(edition.winnerActive), winnerStartedAt: edition.winnerStartedAt, juriesRevealed: reveals.length, juriesSubmitted: ballotCount?.count ?? 0, scoreboard: rows.results, reveals });
+  return context.json({
+    edition: edition.name,
+    mode: rehearsal ? 'rehearsal' : 'live',
+    auroraMode: edition.auroraMode,
+    resultsOpenedAt: rehearsal ? edition.rehearsalOpenedAt : edition.resultsOpenedAt,
+    guestActive: rehearsal ? false : Boolean(edition.guestActive),
+    guestStartedAt: rehearsal ? null : edition.guestStartedAt,
+    winnerActive: rehearsal ? false : Boolean(edition.winnerActive),
+    winnerStartedAt: rehearsal ? null : edition.winnerStartedAt,
+    juriesRevealed: reveals.length,
+    juriesSubmitted: ballotCount?.count ?? 0,
+    scoreboard: rows.results,
+    reveals,
+  });
 });
 
 publicRoutes.get('/champions', async (context) => {

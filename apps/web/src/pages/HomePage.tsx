@@ -1,23 +1,29 @@
-import { ArrowRight, Clock3, Radio, ShieldCheck, Sparkles, Trophy } from 'lucide-react';
+import { ArrowRight, Clock3, EyeOff, Radio, ShieldCheck, Sparkles, Trophy } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 
-type Contest = { id: string; name: string; year: number; phase: 'draft' | 'open' | 'closed'; resultsPublic: boolean; votingDeadline?: string; participants: number; submitted: number };
+type Contest = { id: string; name: string; year: number; phase: 'draft' | 'open' | 'closed'; resultsPublic: boolean; publicStatusEnabled: boolean; votingDeadline?: string; participants: number; submitted: number };
 type Status = { countryId: string; country: string; flag: string; status: 'offline' | 'online' | 'voting' | 'submitted' };
+type CountryListing = Pick<Status, 'countryId' | 'country' | 'flag'>;
 
 export function HomePage() {
   const [contest, setContest] = useState<Contest | null>(null);
   const [statuses, setStatuses] = useState<Status[]>([]);
+  const [countries, setCountries] = useState<CountryListing[]>([]);
   useEffect(() => {
     api<{ edition: Contest }>('/api/public/contest').then((data) => setContest(data.edition)).catch(() => undefined);
     api<{ statuses: Status[] }>('/api/public/status').then((data) => setStatuses(data.statuses)).catch(() => undefined);
+    api<{ participants: CountryListing[] }>('/api/public/participants').then((data) => setCountries(data.participants)).catch(() => undefined);
   }, []);
   const submitted = statuses.filter((item) => item.status === 'submitted').length || contest?.submitted || 0;
   const phaseLabel = contest?.phase === 'open' ? 'Oylama açık' : contest?.phase === 'closed' ? 'Oylama kapandı' : 'Çok yakında';
   const deadline = useMemo(() => contest?.votingDeadline ? new Intl.DateTimeFormat('tr-TR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(contest.votingDeadline)) : null, [contest]);
-  const visibleStatuses = (statuses.length ? statuses : fallbackStatuses).slice(0, 6);
+  const statusPublic = contest?.publicStatusEnabled !== false;
+  const visibleStatuses = statusPublic
+    ? (statuses.length ? statuses : fallbackStatuses).slice(0, 6)
+    : (countries.length ? countries : fallbackStatuses).slice(0, 6).map((item) => ({ ...item, status: 'offline' as const }));
 
   return (
     <>
@@ -39,15 +45,15 @@ export function HomePage() {
         <div className="stage-orbit mx-auto flex aspect-square w-full max-w-[590px] items-center justify-center p-7 sm:p-14">
           <div className="panel relative z-10 w-full max-w-md overflow-hidden p-5 sm:p-7">
             <div className="mb-5 flex items-center justify-between">
-              <div><p className="eyebrow">Canlı jüri durumu</p><h2 className="mt-1 font-display text-2xl font-bold">Sahnenin dört bir yanı</h2></div>
-              <span className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-pink to-orange shadow-lg shadow-pink/30"><Radio className="h-5 w-5" /></span>
+              <div><p className="eyebrow">{statusPublic ? 'Canlı jüri durumu' : 'Jüri ülkeleri'}</p><h2 className="mt-1 font-display text-2xl font-bold">{statusPublic ? 'Sahnenin dört bir yanı' : 'Herkese gösterim şu an kapalı'}</h2></div>
+              <span className={`grid h-11 w-11 place-items-center rounded-full shadow-lg ${statusPublic ? 'bg-gradient-to-br from-pink to-orange shadow-pink/30' : 'border border-white/15 bg-white/10 text-pink-50/55'}`}>{statusPublic ? <Radio className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}</span>
             </div>
             <div className="space-y-2">{visibleStatuses.map((item, index) => (
               <div key={item.countryId} className="reveal-row flex items-center justify-between rounded-xl border border-white/20 bg-white/[.1] px-4 py-3 backdrop-blur-md" style={{ animationDelay: `${index * 65}ms` }}>
-                <div className="flex items-center gap-3"><span className="text-2xl">{item.flag}</span><span className="font-bold">{item.country}</span></div><StatusBadge status={item.status} />
+                <div className="flex items-center gap-3"><span className="text-2xl">{item.flag}</span><span className="font-bold">{item.country}</span></div>{statusPublic && <StatusBadge status={item.status} />}
               </div>
             ))}</div>
-            <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-gradient-to-r from-orange via-pink to-softpink transition-all" style={{ width: `${contest?.participants ? Math.round(submitted / contest.participants * 100) : 36}%` }} /></div>
+            {statusPublic && <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-gradient-to-r from-orange via-pink to-softpink transition-all" style={{ width: `${contest?.participants ? Math.round(submitted / contest.participants * 100) : 36}%` }} /></div>}
           </div>
         </div>
       </section>

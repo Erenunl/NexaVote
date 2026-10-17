@@ -14,6 +14,8 @@ type JuryReveal = {
 };
 type ResultsResponse = {
   edition: string;
+  mode: 'live' | 'rehearsal';
+  auroraMode: string;
   resultsOpenedAt: string | null;
   guestActive: boolean;
   guestStartedAt: string | null;
@@ -71,6 +73,7 @@ function addScore(scoreboard: Result[], score: RevealScore): Result[] {
 }
 
 export function ResultsPage() {
+  const isRehearsal = new URLSearchParams(window.location.search).get('mode') === 'rehearsal';
   const [scoreboard, setScoreboard] = useState<Result[]>([]);
   const [meta, setMeta] = useState<Pick<ResultsResponse, 'edition' | 'juriesRevealed' | 'juriesSubmitted'> | null>(null);
   const [hidden, setHidden] = useState(true);
@@ -88,7 +91,9 @@ export function ResultsPage() {
   const [winnerAudioBlocked, setWinnerAudioBlocked] = useState(false);
   const [winnerPresentation, setWinnerPresentation] = useState<WinnerPresentation | null>(null);
   const [winnerElapsed, setWinnerElapsed] = useState<number | null>(null);
+  const [leaderFlash, setLeaderFlash] = useState<Result | null>(null);
   const seenRevealOrder = useRef<number | null>(null);
+  const seenRevealKeys = useRef(new Set<string>());
   const revealQueue = useRef<JuryReveal[]>([]);
   const processingQueue = useRef(false);
   const mounted = useRef(true);
@@ -110,6 +115,7 @@ export function ResultsPage() {
   const winnerEnterTimer = useRef<number | null>(null);
   const winnerFadeTimer = useRef<number | null>(null);
   const winnerVolumeTimer = useRef<number | null>(null);
+  const leaderFlashTimer = useRef<number | null>(null);
 
   const playRevealQueue = useCallback(async () => {
     if (processingQueue.current || openingActive.current || guestActive.current || winnerActive.current) return;
@@ -124,7 +130,17 @@ export function ResultsPage() {
         const score = scores[index];
         if (!score) continue;
         setActiveReveal({ reveal, stage: 'points', score, scoreIndex: index + 1 });
-        setScoreboard((current) => addScore(current, score));
+        setScoreboard((current) => {
+          const previousLeader = (current[0]?.totalPoints ?? 0) > 0 ? current[0] : undefined;
+          const next = addScore(current, score);
+          const nextLeader = (next[0]?.totalPoints ?? 0) > 0 ? next[0] : undefined;
+          if (nextLeader && previousLeader?.countryId !== nextLeader.countryId) {
+            setLeaderFlash(nextLeader);
+            if (leaderFlashTimer.current !== null) window.clearTimeout(leaderFlashTimer.current);
+            leaderFlashTimer.current = window.setTimeout(() => setLeaderFlash(null), 1400);
+          }
+          return next;
+        });
         await wait(score.points >= 10 ? REVEAL_TIMING.highPoint : REVEAL_TIMING.standardPoint);
       }
       if (!mounted.current) break;
@@ -250,7 +266,7 @@ export function ResultsPage() {
 
   const refreshResults = useCallback(async () => {
     try {
-      const data = await api<ResultsResponse>('/api/public/results');
+      const data = await api<ResultsResponse>(`/api/public/results${isRehearsal ? '?mode=rehearsal' : ''}`);
       if (!mounted.current) return;
       setHidden(false);
       setMeta({ edition: data.edition, juriesRevealed: data.juriesRevealed, juriesSubmitted: data.juriesSubmitted });
@@ -261,12 +277,14 @@ export function ResultsPage() {
       const newestOrder = data.reveals.at(-1)?.revealOrder ?? 0;
       if (seenRevealOrder.current === null) {
         seenRevealOrder.current = newestOrder;
+        seenRevealKeys.current = new Set(data.reveals.map((reveal) => `${reveal.revealOrder}-${reveal.revealedAt}`));
         setScoreboard(data.scoreboard);
         return;
       }
-      const unseen = data.reveals.filter((reveal) => reveal.revealOrder > (seenRevealOrder.current ?? 0));
+      const unseen = data.reveals.filter((reveal) => !seenRevealKeys.current.has(`${reveal.revealOrder}-${reveal.revealedAt}`));
       if (unseen.length > 0) {
         seenRevealOrder.current = newestOrder;
+        unseen.forEach((reveal) => seenRevealKeys.current.add(`${reveal.revealOrder}-${reveal.revealedAt}`));
         revealQueue.current.push(...unseen);
         void playRevealQueue();
       } else if (!processingQueue.current) {
@@ -277,6 +295,7 @@ export function ResultsPage() {
       if (error.code === 'RESULTS_HIDDEN') {
         setHidden(true);
         seenRevealOrder.current = null;
+        seenRevealKeys.current.clear();
         openingRunId.current = null;
         openingActive.current = false;
         setOpeningStartedAt(null);
@@ -287,7 +306,7 @@ export function ResultsPage() {
         updateWinnerBroadcast(false, null);
       }
     }
-  }, [beginOpening, playRevealQueue, updateGuestBroadcast, updateWinnerBroadcast]);
+  }, [beginOpening, isRehearsal, playRevealQueue, updateGuestBroadcast, updateWinnerBroadcast]);
 
   const prepareAudio = useCallback(async () => {
     const audio = audioRef.current;
@@ -461,6 +480,7 @@ export function ResultsPage() {
       if (winnerFadeTimer.current !== null) window.clearTimeout(winnerFadeTimer.current);
       if (winnerVolumeTimer.current !== null) window.clearInterval(winnerVolumeTimer.current);
       winnerVideoRef.current?.pause();
+      if (leaderFlashTimer.current !== null) window.clearTimeout(leaderFlashTimer.current);
     };
   }, [refreshResults]);
 
@@ -492,12 +512,12 @@ export function ResultsPage() {
   const guestVideo = <video key="guest-performance-video" ref={guestVideoRef} className={`pointer-events-none fixed inset-0 z-[130] h-full w-full object-cover object-center transition-opacity duration-1000 ${guestIsVisible && guestStage === 'video' && guestVideoReady ? 'opacity-100' : 'opacity-0'}`} src={guestVideoUrl} playsInline preload="auto" aria-hidden="true" onLoadedData={() => setGuestVideoReady(true)} onCanPlay={() => setGuestVideoReady(true)} onPlaying={() => setGuestVideoReady(true)} onError={() => setGuestVideoReady(false)} />;
   const winnerVideo = <video key="winner-studio-video" ref={winnerVideoRef} className={`pointer-events-none fixed inset-0 z-[130] h-full w-full object-cover object-center transition-opacity duration-1000 ${winnerIsVisible && winnerVideoVisible && winnerVideoReady ? 'opacity-100' : 'opacity-0'}`} src={winnerVideoUrl} playsInline preload="auto" aria-hidden="true" onLoadedData={() => setWinnerVideoReady(true)} onCanPlay={() => setWinnerVideoReady(true)} onPlaying={() => setWinnerVideoReady(true)} onError={() => setWinnerVideoReady(false)} />;
 
-  if (hidden) return <>{openingAudio}{openingVideo}{guestVideo}{winnerVideo}<section className="mx-auto grid min-h-[75vh] max-w-3xl place-items-center px-5 py-16"><div className="panel w-full overflow-hidden p-10 text-center"><div className="stage-orbit mx-auto grid h-28 w-28 place-items-center"><span className="relative z-10 grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-pink to-orange shadow-lg shadow-pink/30"><LockKeyhole /></span></div><p className="eyebrow mt-7">Büyük açıklama yaklaşıyor</p><h1 className="mt-3 font-display text-4xl font-black uppercase">Sonuçlar henüz gizli</h1><p className="mx-auto mt-4 max-w-md leading-7 text-pink-50/60">Organizatör sonuç ekranını açtığında bu sayfa kendiliğinden canlı yayına geçecek. Yenilemeniz gerekmez.</p><button className="btn-primary mx-auto mt-6" onClick={prepareAudio}>{audioReady ? 'Yayın sesi hazır' : 'Yayın sesini hazırla'}</button><div className="mt-5 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-softpink"><span className="status-dot animate-pulseSoft bg-softpink" /> Canlı bağlantı bekleniyor</div></div></section></>;
+  if (hidden) return <>{openingAudio}{openingVideo}{guestVideo}{winnerVideo}<section className="mx-auto grid min-h-[75vh] max-w-3xl place-items-center px-5 py-16"><div className="panel w-full overflow-hidden p-10 text-center"><div className="stage-orbit mx-auto grid h-28 w-28 place-items-center"><span className="relative z-10 grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-pink to-orange shadow-lg shadow-pink/30"><LockKeyhole /></span></div><p className="eyebrow mt-7">{isRehearsal ? 'Reji prova hattı' : 'Büyük açıklama yaklaşıyor'}</p><h1 className="mt-3 font-display text-4xl font-black uppercase">{isRehearsal ? 'Prova çıkışı kapalı' : 'Sonuçlar henüz gizli'}</h1><p className="mx-auto mt-4 max-w-md leading-7 text-pink-50/60">{isRehearsal ? 'Yönetici prova çıkışını açtığında bu ekran gerçek sonuçları etkilemeden otomatik olarak çalışmaya başlayacak.' : 'Organizatör sonuç ekranını açtığında bu sayfa kendiliğinden canlı yayına geçecek. Yenilemeniz gerekmez.'}</p><button className="btn-primary mx-auto mt-6" onClick={prepareAudio}>{audioReady ? 'Yayın sesi hazır' : 'Yayın sesini hazırla'}</button><div className="mt-5 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-softpink"><span className="status-dot animate-pulseSoft bg-softpink" /> {isRehearsal ? 'Prova bağlantısı bekleniyor' : 'Canlı bağlantı bekleniyor'}</div></div></section></>;
 
   return (
-    <>{openingAudio}{openingVideo}{guestVideo}{winnerVideo}<section className="mx-auto min-h-[75vh] max-w-7xl px-5 py-14 lg:px-8">
+    <>{openingAudio}{openingVideo}{guestVideo}{winnerVideo}<section className={`results-broadcast ${isRehearsal ? 'results-broadcast-rehearsal' : 'results-broadcast-live'} mx-auto min-h-[75vh] max-w-7xl px-5 py-14 lg:px-8`}>
       <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
-        <div><div className="broadcast-chip mb-4"><Radio className="h-3.5 w-3.5 text-orange" /> Canlı · Otomatik güncelleniyor</div><p className="eyebrow">Resmî sonuçlar</p><h1 className="mt-2 font-display text-5xl font-black uppercase tracking-[-.04em] sm:text-7xl">{meta?.edition || 'Nexavision'}</h1><p className="mt-3 text-pink-50/60">{meta?.juriesSubmitted} jüri oyununun {meta?.juriesRevealed} tanesi açıklandı</p></div>
+        <div><div className={`broadcast-chip mb-4 ${isRehearsal ? 'broadcast-chip-rehearsal' : ''}`}><Radio className="h-3.5 w-3.5 text-orange" /> {isRehearsal ? 'PROVA · Gerçek sonuçları etkilemez' : 'CANLI · Otomatik güncelleniyor'}</div><p className="eyebrow">{isRehearsal ? 'Reji provası' : 'Resmî sonuçlar'}</p><h1 className="mt-2 font-display text-5xl font-black uppercase tracking-[-.04em] sm:text-7xl">{meta?.edition || 'Nexavision'}</h1><p className="mt-3 text-pink-50/60">{meta?.juriesSubmitted} jüri oyununun {meta?.juriesRevealed} tanesi açıklandı</p></div>
         <button className="btn-secondary" onClick={() => document.documentElement.requestFullscreen?.()}><Expand className="h-4 w-4" />Sunum modu</button>
       </div>
       <div className="mt-10 grid gap-5 xl:grid-cols-[1fr_280px]">
@@ -506,7 +526,7 @@ export function ResultsPage() {
           <div className="space-y-2">{scoreboard.map((result, index) => (
             <div key={result.countryId} className={`scoreboard-row reveal-row ${index === 0 && result.totalPoints > 0 ? 'scoreboard-row-winner' : ''} ${highlightedCountryId === result.countryId ? 'scoreboard-row-highlighted' : ''}`} style={{ animationDelay: `${index * 35}ms` }}>
               <span className="relative z-10 grid h-10 w-10 place-items-center rounded-lg border border-white/25 bg-purple/35 font-display text-lg font-black sm:h-11 sm:w-11">{index + 1}</span>
-              <div className="relative z-10 min-w-0"><div className="flex items-center gap-3"><span className="text-2xl sm:text-3xl">{result.flag}</span><span className="truncate font-display text-base font-bold uppercase sm:text-xl">{result.country}</span>{index === 0 && <Trophy className="hidden h-5 w-5 text-white sm:block" />}</div><div className="mt-1.5 hidden h-1 overflow-hidden rounded-full bg-purple/25 sm:block"><div className="h-full bg-white/70 transition-all duration-500" style={{ width: `${Math.max(6, result.totalPoints / maxPoints * 100)}%` }} /></div></div>
+              <div className="relative z-10 min-w-0"><div className="flex items-center gap-3"><span className="text-2xl sm:text-3xl">{result.flag}</span><span className="truncate font-display text-base font-bold uppercase sm:text-xl">{result.country}</span>{index === 0 && result.totalPoints > 0 && <Trophy className="hidden h-5 w-5 text-white sm:block" />}</div><div className="mt-1.5 hidden h-1 overflow-hidden rounded-full bg-purple/25 sm:block"><div className="h-full bg-white/70 transition-all duration-500" style={{ width: `${Math.max(6, result.totalPoints / maxPoints * 100)}%` }} /></div></div>
               <span className="relative z-10 font-display text-2xl font-black tabular-nums sm:text-3xl">{result.totalPoints}<small className="ml-1 text-[10px] font-bold uppercase text-white/60">puan</small></span>
             </div>
           ))}</div>
@@ -515,6 +535,8 @@ export function ResultsPage() {
         <aside className="panel h-fit overflow-hidden p-6"><span className="text-5xl">{leader?.flag || '✨'}</span><p className="eyebrow mt-6">Şu anki lider</p><h2 className="mt-2 font-display text-3xl font-black uppercase">{leader?.country || 'Oylar bekleniyor'}</h2><p className="mt-2 text-pink-50/55">{leader ? `Skor tablosunda ${leader.totalPoints} puan` : 'İlk jüri açıklamasıyla yarış başlayacak.'}</p><div className="mt-6 h-1.5 rounded-full bg-gradient-to-r from-orange via-pink to-electric" /></aside>
       </div>
 
+      {leaderFlash && <div key={leaderFlash.countryId} className="leader-change-flash pointer-events-none fixed inset-0 z-40 grid place-items-center" aria-hidden="true"><div className="leader-change-card text-center"><p className="text-xs font-black uppercase tracking-[.4em] text-cyan">Yeni lider</p><span className="mt-5 block text-7xl">{leaderFlash.flag}</span><strong className="mt-4 block font-display text-4xl font-black uppercase sm:text-6xl">{leaderFlash.country}</strong></div></div>}
+      {activeReveal?.stage === 'points' && activeReveal.score?.points === 12 && <div key={`twelve-${activeReveal.reveal.revealOrder}-${activeReveal.scoreIndex}`} className="twelve-aurora-burst pointer-events-none fixed inset-0 z-40" aria-hidden="true"><span /><span /><span /></div>}
       {activeReveal?.stage === 'intro' && <div className="jury-reveal-backdrop fixed inset-0 z-50 grid place-items-center p-5" role="status" aria-live="assertive"><div className="jury-reveal-intro text-center"><span className="text-7xl sm:text-8xl">{activeReveal.reveal.juryFlag}</span><p className="eyebrow mt-8">Sıradaki jüri</p><h2 className="mt-3 font-display text-5xl font-black uppercase sm:text-7xl">{activeReveal.reveal.juryCountry}</h2><p className="mt-5 text-xl font-semibold text-pink-50/70">Jürisinin oyları geliyor</p></div></div>}
       {activeReveal?.stage === 'points' && activeReveal.score && <div key={`${activeReveal.reveal.revealOrder}-${activeReveal.scoreIndex}`} className="pointer-events-none fixed inset-x-0 top-24 z-50 flex justify-center px-4" role="status" aria-live="assertive"><div className={`jury-point-card flex w-full max-w-xl items-center gap-4 rounded-3xl border p-4 sm:p-5 ${activeReveal.score.points === 12 ? 'jury-point-card-twelve' : ''}`}><span className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-2xl bg-white/15 font-display font-black"><strong className="text-3xl leading-none">{activeReveal.score.points}</strong><small className="mt-1 text-[9px] uppercase tracking-wider text-white/60">puan</small></span><div className="min-w-0 flex-1"><p className="text-xs font-black uppercase tracking-[.2em] text-pink-100/55">{activeReveal.reveal.juryFlag} {activeReveal.reveal.juryCountry} jürisi</p><p className="mt-1 truncate font-display text-2xl font-black uppercase sm:text-3xl">{activeReveal.score.flag} {activeReveal.score.country}</p></div><span className="hidden text-xs font-bold text-pink-100/45 sm:block">{activeReveal.scoreIndex}/10</span></div></div>}
       {activeReveal?.stage === 'complete' && <div className="pointer-events-none fixed inset-x-0 top-24 z-50 flex justify-center px-4" role="status" aria-live="polite"><div className="jury-point-card flex items-center gap-3 rounded-full border px-6 py-4"><Sparkles className="text-orange" /><span className="font-bold">{activeReveal.reveal.juryCountry} jürisinin oyları tamamlandı</span></div></div>}
