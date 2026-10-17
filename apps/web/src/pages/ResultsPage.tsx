@@ -43,14 +43,14 @@ const REVEAL_TIMING = {
   complete: 1800,
 } as const;
 const OPENING_TIMING = {
-  audioStartSeconds: 4,
+  audioStartSeconds: 0,
   mainAudioAt: 6270,
   logoAt: 500,
   logoFadeOutAt: 5470,
-  titleAt: 14270,
-  titleEndAt: 20270,
-  videoAt: 20270,
-  endAt: 32270,
+  titleAt: 19270,
+  titleEndAt: 25270,
+  videoAt: 25270,
+  endAt: 30340,
 } as const;
 const GUEST_TIMING = {
   titleAt: 900,
@@ -61,7 +61,7 @@ const WINNER_TIMING = {
   videoAt: 800,
   fadeDuration: 1200,
 } as const;
-const openingAudioUrl = `${import.meta.env.BASE_URL}results-opening.mp3`;
+const openingAudioUrl = `${import.meta.env.BASE_URL}results-opening-main.mp3`;
 const openingStingerUrl = `${import.meta.env.BASE_URL}results-opening-stinger.mp4`;
 const openingVideoUrl = `${import.meta.env.BASE_URL}results-opening.mp4`;
 const openingLogoUrl = `${import.meta.env.BASE_URL}nexavision-helsinki-2026-logo.png`;
@@ -102,9 +102,10 @@ export function ResultsPage() {
   const latestServerScoreboard = useRef<Result[]>([]);
   const openingActive = useRef(false);
   const openingRunId = useRef<string | null>(null);
+  const stingerStarted = useRef(false);
   const stingerAttempted = useRef(false);
   const audioAttempted = useRef(false);
-  const stingerRef = useRef<HTMLAudioElement>(null);
+  const stingerRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const guestVideoRef = useRef<HTMLVideoElement>(null);
@@ -163,6 +164,7 @@ export function ResultsPage() {
     openingRunId.current = resultsOpenedAt;
     if (!Number.isFinite(startedAt) || elapsed >= OPENING_TIMING.endAt) return;
     openingActive.current = true;
+    stingerStarted.current = false;
     stingerAttempted.current = false;
     audioAttempted.current = false;
     setOpeningStartedAt(startedAt);
@@ -352,7 +354,21 @@ export function ResultsPage() {
     if (!stinger || !audio || openingStartedAt === null) return;
     try {
       const elapsed = Math.max(0, Date.now() - openingStartedAt);
-      if (elapsed < OPENING_TIMING.mainAudioAt) {
+      if (!stingerStarted.current) {
+        const restartedAt = Date.now();
+        audio.pause();
+        audio.currentTime = OPENING_TIMING.audioStartSeconds;
+        videoRef.current?.pause();
+        if (videoRef.current) videoRef.current.currentTime = 0;
+        stinger.currentTime = 0;
+        stinger.muted = false;
+        stingerAttempted.current = true;
+        audioAttempted.current = false;
+        setOpeningStartedAt(restartedAt);
+        setOpeningElapsed(0);
+        await stinger.play();
+        stingerStarted.current = true;
+      } else if (elapsed < OPENING_TIMING.mainAudioAt) {
         audio.pause();
         stinger.currentTime = elapsed / 1000;
         stinger.muted = false;
@@ -398,20 +414,19 @@ export function ResultsPage() {
     }
   }, []);
 
+  const finishOpening = useCallback(() => {
+    if (!openingActive.current) return;
+    openingActive.current = false;
+    stingerRef.current?.pause();
+    audioRef.current?.pause();
+    videoRef.current?.pause();
+    setOpeningElapsed(null);
+    setOpeningStartedAt(null);
+    void playRevealQueue();
+  }, [playRevealQueue]);
+
   useEffect(() => {
     if (openingStartedAt === null) return;
-    let finished = false;
-    const finishOpening = () => {
-      if (finished) return;
-      finished = true;
-      openingActive.current = false;
-      stingerRef.current?.pause();
-      audioRef.current?.pause();
-      videoRef.current?.pause();
-      setOpeningElapsed(null);
-      setOpeningStartedAt(null);
-      void playRevealQueue();
-    };
     const synchronize = () => {
       const elapsed = Math.max(0, Date.now() - openingStartedAt);
       if (elapsed >= OPENING_TIMING.endAt) {
@@ -430,6 +445,7 @@ export function ResultsPage() {
           if (stinger.paused && !stingerAttempted.current) {
             stingerAttempted.current = true;
             void stinger.play().then(() => {
+              stingerStarted.current = true;
               setAudioReady(true);
               setAudioBlocked(false);
             }).catch(() => setAudioBlocked(true));
@@ -458,7 +474,7 @@ export function ResultsPage() {
     synchronize();
     const timer = window.setInterval(synchronize, 100);
     return () => window.clearInterval(timer);
-  }, [openingStartedAt, playRevealQueue, videoReady]);
+  }, [finishOpening, openingStartedAt, videoReady]);
 
   useEffect(() => {
     if (!guestPresentation || guestPresentation.phase === 'exiting') return;
@@ -551,9 +567,9 @@ export function ResultsPage() {
   const guestIsVisible = guestPresentation?.phase === 'playing';
   const winnerIsVisible = winnerPresentation?.phase === 'playing';
   const winnerVideoVisible = winnerElapsed !== null && winnerElapsed >= WINNER_TIMING.videoAt;
-  const openingStinger = <audio key="results-opening-stinger" ref={stingerRef} preload="auto" src={openingStingerUrl} />;
+  const openingStinger = <video key="results-opening-stinger" ref={stingerRef} className="pointer-events-none fixed h-px w-px opacity-0" preload="auto" playsInline src={openingStingerUrl} aria-hidden="true" />;
   const openingAudio = <audio key="results-opening-audio" ref={audioRef} preload="auto" src={openingAudioUrl} />;
-  const openingVideo = <video key="results-opening-video" ref={videoRef} className={`pointer-events-none fixed inset-0 z-[110] h-full w-full object-cover object-center transition-opacity duration-700 ${openingStage === 'video' && videoReady ? 'opacity-100' : 'opacity-0'}`} src={openingVideoUrl} muted playsInline preload="auto" aria-hidden="true" onLoadedData={() => setVideoReady(true)} onCanPlay={() => setVideoReady(true)} onPlaying={() => setVideoReady(true)} onError={() => setVideoReady(false)} />;
+  const openingVideo = <video key="results-opening-video" ref={videoRef} className={`pointer-events-none fixed inset-0 z-[110] h-full w-full object-cover object-center transition-opacity duration-700 ${openingStage === 'video' && videoReady ? 'opacity-100' : 'opacity-0'}`} src={openingVideoUrl} muted playsInline preload="auto" aria-hidden="true" onLoadedData={() => setVideoReady(true)} onCanPlay={() => setVideoReady(true)} onPlaying={() => setVideoReady(true)} onEnded={finishOpening} onError={() => setVideoReady(false)} />;
   const guestVideo = <video key="guest-performance-video" ref={guestVideoRef} className={`pointer-events-none fixed inset-0 z-[130] h-full w-full object-cover object-center transition-opacity duration-1000 ${guestIsVisible && guestStage === 'video' && guestVideoReady ? 'opacity-100' : 'opacity-0'}`} src={guestVideoUrl} playsInline preload="auto" aria-hidden="true" onLoadedData={() => setGuestVideoReady(true)} onCanPlay={() => setGuestVideoReady(true)} onPlaying={() => setGuestVideoReady(true)} onError={() => setGuestVideoReady(false)} />;
   const winnerVideo = <video key="winner-studio-video" ref={winnerVideoRef} className={`pointer-events-none fixed inset-0 z-[130] h-full w-full object-cover object-center transition-opacity duration-1000 ${winnerIsVisible && winnerVideoVisible && winnerVideoReady ? 'opacity-100' : 'opacity-0'}`} src={winnerVideoUrl} playsInline preload="auto" aria-hidden="true" onLoadedData={() => setWinnerVideoReady(true)} onCanPlay={() => setWinnerVideoReady(true)} onPlaying={() => setWinnerVideoReady(true)} onError={() => setWinnerVideoReady(false)} />;
 
