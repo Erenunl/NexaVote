@@ -7,7 +7,11 @@ import {
 } from 'lucide-react';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { api } from '../lib/api';
+import { StageBroadcastVideo, type StageVideoStatus } from '../components/StageBroadcastVideo';
+import { mediaPosition, normalizeStageMedia, stageVideos, type StageMedia } from '../lib/stageMedia';
+import { batchStageGeometry, seatLightMatrices } from '../lib/stageGeometry';
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/nexavision-aurora-r03.glb`;
 const INTRO_SECONDS = 14;
@@ -28,6 +32,11 @@ export type StageControls = {
   floorLevel: number;
   juryEnabled: boolean;
   juryLevel: number;
+  seatsEnabled: boolean;
+  seatsLevel: number;
+  seatsWave: boolean;
+  seatsWaveSpeed: number;
+  seatsWaveStartedAt: number;
   edgesEnabled: boolean;
   edgesLevel: number;
   spotMotion: boolean;
@@ -76,6 +85,11 @@ export const defaultControls: StageControls = {
   floorLevel: 0.78,
   juryEnabled: true,
   juryLevel: 0.72,
+  seatsEnabled: true,
+  seatsLevel: 0.55,
+  seatsWave: false,
+  seatsWaveSpeed: 1,
+  seatsWaveStartedAt: 0,
   edgesEnabled: true,
   edgesLevel: 0.9,
   spotMotion: true,
@@ -90,6 +104,7 @@ export const defaultControls: StageControls = {
 };
 
 export type LiveStageBroadcastState = {
+  media: StageMedia | null;
   controls: StageControls;
   showState: ShowState;
   introStartedAt: number | null;
@@ -100,6 +115,7 @@ export type LiveStageBroadcastState = {
 };
 
 export const defaultBroadcastState: LiveStageBroadcastState = {
+  media: null,
   controls: defaultControls,
   showState: 'blackout',
   introStartedAt: null,
@@ -116,6 +132,7 @@ export function normalizeLiveStageState(value: unknown): LiveStageBroadcastState
   const cameraPreset = candidate.cameraPreset && ['overview', 'diagonal', 'jury'].includes(candidate.cameraPreset) ? candidate.cameraPreset : 'overview';
   const quality = candidate.quality && ['low', 'medium', 'high'].includes(candidate.quality) ? candidate.quality : 'medium';
   return {
+    media: normalizeStageMedia(candidate.media),
     controls: { ...defaultControls, ...(candidate.controls ?? {}) },
     showState,
     introStartedAt: typeof candidate.introStartedAt === 'number' ? candidate.introStartedAt : null,
@@ -211,8 +228,8 @@ function StageModel({ controls, showState, introStartedAt, reducedMotion, videoE
   videoReady: boolean;
 }) {
   const gltf = useGLTF(MODEL_URL, true) as unknown as { scene: THREE.Group };
-  const model = useMemo(() => gltf.scene.clone(true), [gltf.scene]);
   const fallbackTexture = useMemo(() => makeFallbackTexture(), []);
+  const screenRef = useRef<THREE.MeshBasicMaterial>(null);
   const screenTexture = useMemo(() => {
     if (!videoElement || !videoReady) return fallbackTexture;
     const texture = new THREE.VideoTexture(videoElement);
@@ -224,6 +241,7 @@ function StageModel({ controls, showState, introStartedAt, reducedMotion, videoE
   }, [fallbackTexture, videoElement, videoReady]);
 
   const groups = useMemo(() => {
+    const model = gltf.scene.clone(true);
     const sharedMaterials = new Map<string, THREE.Material>();
     const mainEdges: THREE.MeshStandardMaterial[] = [];
     const accentEdges: THREE.MeshStandardMaterial[] = [];
@@ -234,54 +252,61 @@ function StageModel({ controls, showState, introStartedAt, reducedMotion, videoE
     const frontLenses: THREE.MeshStandardMaterial[] = [];
     const floorLenses: THREE.MeshStandardMaterial[] = [];
     const spotLenses: THREE.MeshStandardMaterial[] = [];
-    const screens: THREE.Mesh[] = [];
     let leafIndex = 0;
 
     model.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
       child.castShadow = false;
       child.receiveShadow = false;
-      const objectName = child.name.toLowerCase();
+      const objectName = child.name.toLowerCase().replaceAll('_', ' ');
+      if (child.userData.web_role === 'main_video' || objectName.includes('main video screen') || objectName.includes('concept title')) {
+        child.visible = false;
+        return;
+      }
       const originals = Array.isArray(child.material) ? child.material : [child.material];
       const replacements = originals.map((original) => {
         const materialName = original.name.toLowerCase();
-        let material: THREE.Material;
-        if (materialName.includes('moving amber')) {
-          material = original.clone();
-        } else {
-          material = sharedMaterials.get(original.uuid) ?? original.clone();
-          sharedMaterials.set(original.uuid, material);
-        }
+        const key = materialName.includes('moving amber') ? `${original.uuid}:${leafIndex++ % 24}` : original.uuid;
+        const material: THREE.Material = sharedMaterials.get(key) ?? original.clone();
+        const firstUse = !sharedMaterials.has(key);
+        sharedMaterials.set(key, material);
         if (material instanceof THREE.MeshStandardMaterial) {
           material.toneMapped = true;
+          if (materialName.includes('upholstery') || materialName.includes('concrete')) {
+            material.metalness = 0.05;
+            material.roughness = 0.82;
+          }
+          if (!firstUse) return material;
           if (materialName.includes('main luminous')) mainEdges.push(material);
           if (materialName.includes('accent luminous')) accentEdges.push(material);
           if (materialName.includes('side led')) sideLeds.push(material);
           if (materialName.includes('warm pearl contour')) juryEdges.push(material);
-          if (materialName.includes('moving amber')) leafLeds.push({ material, phase: leafIndex++ * 0.52 });
+          if (materialName.includes('moving amber')) leafLeds.push({ material, phase: (leafIndex % 24) * Math.PI / 12 });
           if (materialName.includes('wing backs') && objectName.includes('leaf')) leafFills.push(material);
           if (materialName.includes('startup lens | front')) frontLenses.push(material);
           if (materialName.includes('startup lens | floor')) floorLenses.push(material);
           if (materialName.includes('startup lens | spot')) spotLenses.push(material);
         }
-        if (materialName.includes('main led')) screens.push(child);
         return material;
       });
       child.material = Array.isArray(child.material) ? replacements : replacements[0];
     });
-    return { mainEdges, accentEdges, sideLeds, leafLeds, leafFills, juryEdges, frontLenses, floorLenses, spotLenses, screens };
-  }, [model]);
-
-  useEffect(() => {
-    const screenMaterial = new THREE.MeshBasicMaterial({ map: screenTexture, color: '#ffffff', toneMapped: false });
-    for (const mesh of groups.screens) mesh.material = screenMaterial;
-    return () => screenMaterial.dispose();
-  }, [groups.screens, screenTexture]);
+    return { model: batchStageGeometry(model), mainEdges, accentEdges, sideLeds, leafLeds, leafFills, juryEdges, frontLenses, floorLenses, spotLenses };
+  }, [gltf.scene]);
 
   useEffect(() => () => {
     if (screenTexture !== fallbackTexture) screenTexture.dispose();
-    fallbackTexture.dispose();
   }, [fallbackTexture, screenTexture]);
+  useEffect(() => () => { fallbackTexture.dispose(); }, [fallbackTexture]);
+  useEffect(() => () => {
+    const materials = new Set<THREE.Material>();
+    groups.model.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      object.geometry.dispose();
+      (Array.isArray(object.material) ? object.material : [object.material]).forEach((item) => materials.add(item));
+    });
+    materials.forEach((material) => material.dispose());
+  }, [groups]);
 
   useFrame(({ clock }) => {
     const channel = introChannels(showState, introStartedAt, reducedMotion);
@@ -295,7 +320,10 @@ function StageModel({ controls, showState, introStartedAt, reducedMotion, videoE
     const juryLevel = controls.juryEnabled ? controls.juryLevel * channel.jury * master : 0;
     groups.mainEdges.forEach((material) => setEmissive(material, controls.mainColor, edgeLevel * 4.2));
     groups.accentEdges.forEach((material) => setEmissive(material, controls.accentColor, edgeLevel * 4));
-    groups.sideLeds.forEach((material) => setEmissive(material, main.clone().lerp(accent, 0.25).getStyle(), Math.min(2.1, edgeLevel * 1.6)));
+    groups.sideLeds.forEach((material) => {
+      material.color.set('#06101d');
+      setEmissive(material, main.clone().lerp(accent, 0.25).getStyle(), controls.leafFill ? edgeLevel * 0.65 : 0);
+    });
     groups.juryEdges.forEach((material) => setEmissive(material, controls.accentColor, juryLevel * 3.2));
     groups.frontLenses.forEach((material) => setEmissive(material, controls.mainColor, frontLevel * 3));
     groups.floorLenses.forEach((material) => setEmissive(material, controls.mainColor, floorLevel * 3));
@@ -312,17 +340,17 @@ function StageModel({ controls, showState, introStartedAt, reducedMotion, videoE
         : 0;
       setEmissive(material, controls.accentColor, leafBase * chase * 6.2);
     });
-    groups.screens.forEach((mesh) => {
-      const material = mesh.material;
-      if (material instanceof THREE.MeshBasicMaterial) {
-        const screenLevel = controls.screenEnabled ? channel.screen * master : 0;
-        material.color.setScalar(screenLevel);
-        material.visible = screenLevel > 0.004;
-      }
-    });
+    if (screenRef.current) screenRef.current.color.setScalar(controls.screenEnabled ? channel.screen : 0);
   });
 
-  return <primitive object={model} />;
+  const ratio = videoReady && videoElement?.videoWidth ? videoElement.videoWidth / videoElement.videoHeight : 16 / 9;
+  const width = Math.min(19.2, 10.8 * ratio);
+  const height = Math.min(10.8, 19.2 / ratio);
+  return <>
+    <primitive object={groups.model} />
+    <mesh position={[0, 8.6, -19.44]}><planeGeometry args={[19.2, 10.8]} /><meshBasicMaterial color="black" toneMapped={false} /></mesh>
+    <mesh position={[0, 8.6, -19.42]}><planeGeometry args={[width, height]} /><meshBasicMaterial ref={screenRef} map={screenTexture} toneMapped={false} /></mesh>
+  </>;
 }
 
 function StageLighting({ controls, showState, introStartedAt, reducedMotion, quality }: {
@@ -332,7 +360,7 @@ function StageLighting({ controls, showState, introStartedAt, reducedMotion, qua
   reducedMotion: boolean;
   quality: Quality;
 }) {
-  const { scene } = useThree();
+  const { scene, gl } = useThree();
   const ambientRef = useRef<THREE.HemisphereLight>(null);
   const frontRef = useRef<THREE.DirectionalLight>(null);
   const fillRef = useRef<THREE.DirectionalLight>(null);
@@ -349,12 +377,23 @@ function StageLighting({ controls, showState, introStartedAt, reducedMotion, qua
     return () => { if (scene.fog === fog) scene.fog = null; };
   }, [fog, scene]);
 
+  useEffect(() => {
+    const generator = new THREE.PMREMGenerator(gl);
+    const room = new RoomEnvironment();
+    const environment = generator.fromScene(room, 0.04);
+    scene.environment = environment.texture;
+    room.dispose();
+    generator.dispose();
+    return () => { scene.environment = null; environment.dispose(); };
+  }, [gl, scene]);
+
   useFrame(({ clock }) => {
     const channel = introChannels(showState, introStartedAt, reducedMotion);
     const master = controls.master;
-    if (ambientRef.current) ambientRef.current.intensity = 0.1 + channel.environment * master * 0.78;
-    if (frontRef.current) frontRef.current.intensity = controls.frontEnabled ? channel.front * controls.frontLevel * master * 3.8 : 0;
-    if (fillRef.current) fillRef.current.intensity = channel.environment * master * 1.15;
+    scene.environmentIntensity = channel.environment * master * 0.2;
+    if (ambientRef.current) ambientRef.current.intensity = channel.environment * master * 0.55;
+    if (frontRef.current) frontRef.current.intensity = controls.frontEnabled ? channel.front * controls.frontLevel * master * 2 : 0;
+    if (fillRef.current) fillRef.current.intensity = channel.environment * master * 0.6;
     const spotIntensity = controls.spotsEnabled ? channel.spots * controls.spotsLevel * master : 0;
     spotRefs.current.forEach((light, index) => {
       const basePosition = spotPositions[index] ?? [0, 34, 0];
@@ -378,13 +417,54 @@ function StageLighting({ controls, showState, introStartedAt, reducedMotion, qua
   });
 
   return <>
-    <hemisphereLight ref={ambientRef} args={['#7fffd4', '#010305', 0]} />
-    <directionalLight ref={frontRef} color={controls.mainColor} position={[0, 24, 36]} intensity={0} />
+    <hemisphereLight ref={ambientRef} args={['#d4eaff', '#172336', 0]} />
+    <directionalLight ref={frontRef} color="#e0edff" position={[0, 24, 36]} intensity={0} />
     <directionalLight ref={fillRef} color="#c8fff0" position={[-30, 20, -18]} intensity={0} />
     {spotPositions.map((position, index) => <spotLight key={`spot-${index}`} ref={(light) => { if (light) spotRefs.current[index] = light; }} position={position} angle={0.34} penumbra={0.72} distance={90} decay={1.7} intensity={0} castShadow={quality === 'high' && index === 1} shadow-mapSize-width={1024} shadow-mapSize-height={1024} />)}
     {floorPositions.map((position, index) => <pointLight key={`floor-${index}`} ref={(light) => { if (light) floorRefs.current[index] = light; }} position={position} distance={38} decay={1.8} intensity={0} />)}
     {juryPositions.map((position, index) => <pointLight key={`jury-${index}`} ref={(light) => { if (light) juryRefs.current[index] = light; }} position={position} distance={26} decay={1.8} intensity={0} />)}
   </>;
+}
+
+function SeatLighting({ controls, showState, introStartedAt, reducedMotion }: {
+  controls: StageControls; showState: ShowState; introStartedAt: number | null; reducedMotion: boolean;
+}) {
+  const matrices = useMemo(seatLightMatrices, []);
+  const mesh = useRef<THREE.InstancedMesh>(null);
+  const material = useRef<THREE.MeshBasicMaterial>(null);
+  const lastUpdate = useRef(-1);
+  const colors = useMemo(() => ({ main: new THREE.Color(), accent: new THREE.Color(), result: new THREE.Color() }), []);
+  useEffect(() => {
+    if (!mesh.current) return;
+    matrices.forEach(({ matrix }, index) => {
+      mesh.current!.setMatrixAt(index, matrix);
+      mesh.current!.setColorAt(index, new THREE.Color('white'));
+    });
+    mesh.current.instanceMatrix.needsUpdate = true;
+    mesh.current.computeBoundingSphere();
+  }, [matrices]);
+  useFrame(({ clock }) => {
+    if (!material.current || !mesh.current) return;
+    const level = controls.seatsEnabled ? introChannels(showState, introStartedAt, reducedMotion).jury * controls.seatsLevel * controls.master : 0;
+    material.current.color.setScalar(level * 1.5);
+    mesh.current.visible = level > 0;
+    if (level <= 0 || clock.elapsedTime - lastUpdate.current < 0.05) return;
+    lastUpdate.current = clock.elapsedTime;
+    colors.main.set(controls.mainColor);
+    colors.accent.set(controls.accentColor);
+    const elapsed = Math.max(0, (Date.now() - controls.seatsWaveStartedAt) / 1000);
+    const progress = ((elapsed * controls.seatsWaveSpeed / 12) % 1) * 1.3 - 0.15;
+    matrices.forEach(({ phase }, index) => {
+      const wave = controls.seatsWave && !reducedMotion ? Math.exp(-Math.pow((phase - progress) / 0.085, 2)) : 1;
+      colors.result.copy(colors.main).lerp(colors.accent, wave * 0.35).multiplyScalar(controls.seatsWave && !reducedMotion ? 0.06 + wave * 0.94 : 1);
+      mesh.current!.setColorAt(index, colors.result);
+    });
+    if (mesh.current.instanceColor) mesh.current.instanceColor.needsUpdate = true;
+  });
+  return <instancedMesh ref={mesh} args={[undefined, undefined, matrices.length]}>
+    <boxGeometry args={[0.4, 0.045, 0.06]} />
+    <meshBasicMaterial ref={material} color="black" toneMapped={false} />
+  </instancedMesh>;
 }
 
 function CameraRig({ preset, transitionSeconds, controlsRef, interactive }: {
@@ -466,6 +546,7 @@ function StageWorld({ controls, showState, introStartedAt, reducedMotion, qualit
     <CameraRig preset={cameraPreset} transitionSeconds={cameraSeconds} controlsRef={orbitRef} interactive={interactive} />
     <StageLighting controls={controls} showState={showState} introStartedAt={introStartedAt} reducedMotion={reducedMotion} quality={quality} />
     <StageModel controls={controls} showState={showState} introStartedAt={introStartedAt} reducedMotion={reducedMotion} videoElement={videoElement} videoReady={videoReady} />
+    <SeatLighting controls={controls} showState={showState} introStartedAt={introStartedAt} reducedMotion={reducedMotion} />
     <OrbitControls ref={orbitRef} target={[0, 9, 4]} enabled={interactive} enableDamping dampingFactor={0.065} enablePan={false} minDistance={26} maxDistance={110} maxPolarAngle={Math.PI * 0.49} />
   </>;
 }
@@ -478,12 +559,13 @@ function ChannelControl({ label, enabled, level, onEnabled, onLevel }: { label: 
   return <div className="stage-channel"><Toggle checked={enabled} onChange={onEnabled} label={label} /><input aria-label={`${label} parlaklığı`} type="range" min="0" max="1" step="0.01" value={level} disabled={!enabled} onChange={(event) => onLevel(Number(event.target.value))} /></div>;
 }
 
-export function LiveStageView({ state, videoElement = null, videoReady = false, interactive = false, publicView = false }: {
+export function LiveStageView({ state, videoElement = null, videoReady = false, interactive = false, publicView = false, children }: {
   state: LiveStageBroadcastState;
   videoElement?: HTMLVideoElement | null;
   videoReady?: boolean;
   interactive?: boolean;
   publicView?: boolean;
+  children?: React.ReactNode;
 }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -512,6 +594,7 @@ export function LiveStageView({ state, videoElement = null, videoReady = false, 
     <div className="live-stage-hud"><span>NEXAVISION · HELSINKI 2026</span><strong>{cameraPresets[state.cameraPreset].label}</strong></div>
     <button className="live-stage-fullscreen" type="button" onClick={toggleFullscreen}>{isFullscreen ? <Minimize2 /> : <Maximize2 />}<span>{isFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'}</span></button>
     {showState === 'blackout' && <div className="live-stage-blackout"><Sparkles /><strong>Sahne beklemede</strong><span>{publicView ? 'Canlı yayın rejiden başlatıldığında burada görünecek.' : 'Rejiden açılışı başlatın veya doğrudan açın.'}</span></div>}
+    {children}
   </section>;
 }
 
@@ -528,15 +611,20 @@ export function AdminLiveStage({ token }: { token: string }) {
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [videoMuted, setVideoMuted] = useState(true);
   const [videoVolume, setVideoVolume] = useState(0.75);
+  const [media, setMedia] = useState<StageMedia | null>(null);
+  const [librarySelection, setLibrarySelection] = useState('winner');
+  const [broadcastVideo, setBroadcastVideo] = useState<HTMLVideoElement | null>(null);
+  const [mediaStatus, setMediaStatus] = useState<StageVideoStatus>({ progress: 0, ready: false, blocked: false, error: null });
   const [notice, setNotice] = useState('Yerel video seçilmedi; sahne ekranında geçici Nexavision görseli kullanılıyor.');
   const [broadcastReady, setBroadcastReady] = useState(false);
   const [broadcastStatus, setBroadcastStatus] = useState<'loading' | 'synced' | 'syncing' | 'error'>('loading');
   const [broadcastMessage, setBroadcastMessage] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const syncQueue = useRef<Promise<unknown>>(Promise.resolve());
 
   const broadcastState = useMemo<LiveStageBroadcastState>(() => ({
-    controls, showState, introStartedAt, cameraPreset, cameraSeconds, quality, reducedMotion,
-  }), [cameraPreset, cameraSeconds, controls, introStartedAt, quality, reducedMotion, showState]);
+    controls, showState, introStartedAt, cameraPreset, cameraSeconds, quality, reducedMotion, media,
+  }), [cameraPreset, cameraSeconds, controls, introStartedAt, quality, reducedMotion, showState, media]);
 
   const update = useCallback(<K extends keyof StageControls>(key: K, value: StageControls[K]) => {
     setControls((current) => ({ ...current, [key]: value }));
@@ -545,7 +633,9 @@ export function AdminLiveStage({ token }: { token: string }) {
   const syncBroadcast = useCallback((state: LiveStageBroadcastState) => {
     setBroadcastStatus('syncing');
     setBroadcastMessage(null);
-    return api('/api/admin/live-stage', { method: 'PUT', token, body: JSON.stringify({ state }) })
+    const request = syncQueue.current.catch(() => undefined).then(() => api('/api/admin/live-stage', { method: 'PUT', token, body: JSON.stringify({ state }) }));
+    syncQueue.current = request;
+    return request
       .then(() => { setBroadcastStatus('synced'); })
       .catch((error: unknown) => {
         setBroadcastStatus('error');
@@ -573,12 +663,13 @@ export function AdminLiveStage({ token }: { token: string }) {
       setCameraSeconds(state.cameraSeconds);
       setQuality(state.quality);
       setReducedMotion(state.reducedMotion);
+      setMedia(state.media);
+      if (state.media) setLibrarySelection(state.media.source);
       setBroadcastReady(true);
       setBroadcastStatus('synced');
       setBroadcastMessage(null);
     }).catch((error: unknown) => {
       if (cancelled) return;
-      setBroadcastReady(true);
       setBroadcastStatus('error');
       setBroadcastMessage(error instanceof Error ? error.message : 'Canlı yayın durumu yüklenemedi.');
     });
@@ -608,7 +699,10 @@ export function AdminLiveStage({ token }: { token: string }) {
     if (broadcastReady) void syncBroadcast(next).catch(() => undefined);
   };
   const blackout = () => {
-    const next = { ...broadcastState, showState: 'blackout' as const, introStartedAt: null };
+    const paused = media ? { ...media, playing: false, position: mediaPosition(media, Infinity), startedAt: null } : null;
+    const next = { ...broadcastState, showState: 'blackout' as const, introStartedAt: null, media: paused };
+    setMedia(paused);
+    videoRef.current?.pause();
     setShowState(next.showState);
     setIntroStartedAt(null);
     if (broadcastReady) void syncBroadcast(next).catch(() => undefined);
@@ -622,7 +716,6 @@ export function AdminLiveStage({ token }: { token: string }) {
 
   const selectVideo = (file: File | undefined) => {
     if (!file) return;
-    if (videoUrl) URL.revokeObjectURL(videoUrl);
     const url = URL.createObjectURL(file);
     setVideoUrl(url);
     setVideoReady(false);
@@ -646,6 +739,25 @@ export function AdminLiveStage({ token }: { token: string }) {
     }
   };
 
+  const clearLocalVideo = () => {
+    const video = videoRef.current;
+    if (video) { video.pause(); video.removeAttribute('src'); video.load(); }
+    setVideoUrl(null);
+    setVideoReady(false);
+    setVideoPlaying(false);
+  };
+  const prepareBroadcastVideo = () => {
+    clearLocalVideo();
+    setMediaStatus({ progress: 0, ready: false, blocked: false, error: null });
+    setMedia({ id: crypto.randomUUID(), source: librarySelection, playing: false, position: 0, startedAt: null, volume: 0.75, muted: false });
+  };
+  const removeVideo = () => {
+    clearLocalVideo();
+    setMedia(null);
+    setBroadcastVideo(null);
+    setNotice('Video kaldırıldı. Ön yükleme ve oynatma durduruldu; mevcut site dosyaları silinmedi.');
+  };
+
   const statusLabel = showState === 'blackout' ? 'KARANLIK' : showState === 'opening' ? 'AÇILIŞ' : 'SAHNE AÇIK';
 
   return <div className="live-stage-admin mt-6">
@@ -655,9 +767,11 @@ export function AdminLiveStage({ token }: { token: string }) {
     </section>
     {broadcastMessage && <div className="live-stage-sync-error" role="alert"><strong>İzleyici yayını güncellenemedi.</strong><span>{broadcastMessage} Sayfayı yenileyip yeniden giriş yaptıktan sonra tekrar deneyin.</span></div>}
 
-    <LiveStageView state={broadcastState} videoElement={videoRef.current} videoReady={videoReady} interactive />
+    <LiveStageView state={broadcastState} videoElement={videoUrl ? videoRef.current : broadcastVideo} videoReady={videoUrl ? videoReady : Boolean(broadcastVideo)} interactive>
+      <StageBroadcastVideo media={media} onVideo={setBroadcastVideo} onStatus={setMediaStatus} audible={!videoUrl} />
+    </LiveStageView>
 
-    <video ref={videoRef} className="sr-only" playsInline loop muted={videoMuted} onCanPlay={() => setVideoReady(true)} onPlaying={() => setVideoPlaying(true)} onPause={() => setVideoPlaying(false)} />
+    <video ref={videoRef} className="stage-video-element" playsInline muted={videoMuted} onLoadedData={() => setVideoReady(true)} onPlaying={() => setVideoPlaying(true)} onPause={() => setVideoPlaying(false)} onError={() => { if (videoUrl) setNotice('Bu dosya çözülemedi. H.264 MP4 veya desteklenen bir WebM kullanın.'); }} />
 
     <div className="live-stage-console">
       <section className="live-stage-console-card live-stage-cue-card">
@@ -685,12 +799,16 @@ export function AdminLiveStage({ token }: { token: string }) {
         <ChannelControl label="Üst spotlar" enabled={controls.spotsEnabled} level={controls.spotsLevel} onEnabled={(value) => update('spotsEnabled', value)} onLevel={(value) => update('spotsLevel', value)} />
         <ChannelControl label="Yerden ışıklar" enabled={controls.floorEnabled} level={controls.floorLevel} onEnabled={(value) => update('floorEnabled', value)} onLevel={(value) => update('floorLevel', value)} />
         <ChannelControl label="Jüri ışıkları" enabled={controls.juryEnabled} level={controls.juryLevel} onEnabled={(value) => update('juryEnabled', value)} onLevel={(value) => update('juryLevel', value)} />
+        <ChannelControl label="Tribün koltuk LED’leri" enabled={controls.seatsEnabled} level={controls.seatsLevel} onEnabled={(value) => update('seatsEnabled', value)} onLevel={(value) => update('seatsLevel', value)} />
         <ChannelControl label="Sahne çizgileri" enabled={controls.edgesEnabled} level={controls.edgesLevel} onEnabled={(value) => update('edgesEnabled', value)} onLevel={(value) => update('edgesLevel', value)} />
       </section>
 
       <section className="live-stage-console-card">
         <header><span><Gauge />Hareket ve atmosfer</span><small>Tarayıcı için hafif efektler</small></header>
         <Toggle checked={controls.spotMotion} onChange={(value) => update('spotMotion', value)} label="Spot hareketi" />
+        <Toggle checked={controls.seatsWave} onChange={(value) => setControls((current) => ({ ...current, seatsWave: value, seatsWaveStartedAt: Date.now() }))} label="Tribün dalgası (Hawaii)" />
+        {reducedMotion && controls.seatsWave && <small>Azaltılmış hareket açık: tribün ışıkları sabit kalır.</small>}
+        <label className="stage-slider-label"><span>Tribün dalga hızı <strong>{controls.seatsWaveSpeed.toFixed(1)}×</strong></span><input type="range" min="0.3" max="2" step="0.1" value={controls.seatsWaveSpeed} disabled={!controls.seatsWave || reducedMotion} onChange={(event) => update('seatsWaveSpeed', Number(event.target.value))} /></label>
         <label className="stage-slider-label"><span>Spot hızı <strong>{controls.spotSpeed.toFixed(1)}×</strong></span><input type="range" min="0.1" max="1.8" step="0.1" value={controls.spotSpeed} onChange={(event) => update('spotSpeed', Number(event.target.value))} /></label>
         <Toggle checked={controls.leafEnabled} onChange={(value) => update('leafEnabled', value)} label="Yaprak LED’leri" />
         <label className="stage-slider-label"><span>LED parlaklığı <strong>{Math.round(controls.leafLevel * 100)}%</strong></span><input type="range" min="0" max="1" step="0.01" value={controls.leafLevel} disabled={!controls.leafEnabled} onChange={(event) => update('leafLevel', Number(event.target.value))} /></label>
@@ -701,7 +819,21 @@ export function AdminLiveStage({ token }: { token: string }) {
       </section>
 
       <section className="live-stage-console-card stage-video-card">
-        <header><span><Upload />Ana ekran / video</span><small>Yerel dosya sunucuya yüklenmez</small></header>
+        <header><span><Upload />Yayın videosu</span><small>Geçici seçim · İstediğiniz an kaldırın</small></header>
+        <label className="stage-library-select">Mevcut site videoları<select value={librarySelection} onChange={(event) => setLibrarySelection(event.target.value)}>{stageVideos.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select></label>
+        <div className="stage-video-actions">
+          <button className="btn-primary" type="button" disabled={!broadcastReady} onClick={prepareBroadcastVideo}><Upload />Ön yüklemeyi başlat</button>
+          <button className="btn-secondary" type="button" disabled={!media || !mediaStatus.ready || !broadcastReady} onClick={() => {
+            clearLocalVideo();
+            setMedia((current) => current ? { ...current, playing: mediaStatus.ended || !current.playing, position: mediaStatus.ended ? 0 : current.playing ? mediaPosition(current, broadcastVideo?.duration ?? Infinity) : current.position, startedAt: current.playing && !mediaStatus.ended ? null : Date.now() } : null);
+          }}>{media?.playing && !mediaStatus.ended ? <Pause /> : <Play />}{mediaStatus.ended ? 'Baştan oynat' : media?.playing ? 'Yayını duraklat' : 'Yayında oynat'}</button>
+          <button className="btn-secondary" type="button" disabled={!broadcastReady || (!media && !videoUrl)} onClick={removeVideo}>Yayından kaldır</button>
+        </div>
+        <p>{media ? `Seçili: ${stageVideos.find((entry) => entry.id === media.source)?.label} · Bu cihaz: ${mediaStatus.ready ? 'hazır' : `%${Math.round(mediaStatus.progress)}`}` : 'Yayın için video seçilmedi.'}</p>
+        <p>Ön yükleme, /stage sayfası açık izleyicilerin tarayıcısında yapılır. Buradaki yüzde yalnızca bu cihazı gösterir; herkesin hazır olduğu anlamına gelmez. Dosya İndirilenler klasörüne kaydedilmez.</p>
+        {media && <label className="stage-slider-label"><span>Yayın video sesi <strong>{Math.round(media.volume * 100)}%</strong></span><input aria-label="Yayın video sesi" type="range" min="0" max="1" step="0.01" value={media.volume} onChange={(event) => setMedia((current) => current ? { ...current, volume: Number(event.target.value) } : null)} /></label>}
+        <hr className="my-5 border-white/10" />
+        <h3>Yalnızca bu cihazda önizleme</h3>
         <label className="stage-file-picker"><input type="file" accept="video/mp4,video/webm" onChange={(event) => selectVideo(event.target.files?.[0])} /><Upload />MP4 veya WebM seç</label>
         <p>{notice}</p>
         <div className="stage-video-actions"><button type="button" className="btn-secondary" disabled={!videoReady} onClick={toggleVideo}>{videoPlaying ? <Pause /> : <Play />}{videoPlaying ? 'Duraklat' : 'Oynat'}</button><button type="button" className="btn-secondary" onClick={() => { const next = !videoMuted; setVideoMuted(next); if (videoRef.current) videoRef.current.muted = next; }}>{videoMuted ? <VolumeX /> : <Volume2 />}{videoMuted ? 'Ses kapalı' : 'Ses açık'}</button><Toggle checked={controls.screenEnabled} onChange={(value) => update('screenEnabled', value)} label="Ana ekran" /></div>

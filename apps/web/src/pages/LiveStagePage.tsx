@@ -1,6 +1,7 @@
 import { Radio, Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
+import { StageBroadcastVideo } from '../components/StageBroadcastVideo';
 import { defaultBroadcastState, LiveStageView, normalizeLiveStageState, type LiveStageBroadcastState } from './AdminLiveStage';
 
 type PublicStageResponse = {
@@ -15,7 +16,8 @@ export function LiveStagePage() {
   const [edition, setEdition] = useState('Nexavision');
   const [connected, setConnected] = useState(false);
   const [ready, setReady] = useState(false);
-  const revisionRef = useRef(-1);
+  const [video, setVideo] = useState<HTMLVideoElement | null>(null);
+  const revisionRef = useRef('');
 
   useEffect(() => {
     document.title = 'Nexavision Live Stage';
@@ -27,8 +29,9 @@ export function LiveStagePage() {
       try {
         const response = await api<PublicStageResponse>('/api/public/live-stage');
         if (cancelled) return;
-        if (response.revision !== revisionRef.current) {
-          revisionRef.current = response.revision;
+        const version = `${response.edition}:${response.revision}`;
+        if (version !== revisionRef.current) {
+          revisionRef.current = version;
           setStage(normalizeLiveStageState(response.state));
         }
         setEdition(response.edition);
@@ -51,7 +54,9 @@ export function LiveStagePage() {
   if (!ready) return <main className="live-stage-public-shell live-stage-public-loading"><Radio /><strong>Canlı sahneye bağlanılıyor</strong><span>3D yayın hazırlanıyor…</span></main>;
 
   return <main className="live-stage-public-shell">
-    <LiveStageView state={stage} publicView />
+    <LiveStageView state={stage} videoElement={video} videoReady={Boolean(video)} publicView>
+      <StageBroadcastVideo media={stage.media} onVideo={setVideo} />
+    </LiveStageView>
     <div className={`live-stage-public-status ${connected ? 'is-connected' : 'is-disconnected'}`} role="status">
       {connected ? <Wifi /> : <WifiOff />}
       <span><strong>{connected ? 'CANLI' : 'BAĞLANTI YENİLENİYOR'}</strong><small>{edition} · Reji görüntüsü</small></span>
