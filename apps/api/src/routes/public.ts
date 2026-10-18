@@ -4,6 +4,18 @@ import type { Bindings, AppVariables } from '../types';
 type AppEnv = { Bindings: Bindings; Variables: AppVariables };
 export const publicRoutes = new Hono<AppEnv>();
 
+publicRoutes.get('/live-stage', async (context) => {
+  const edition = await context.env.DB.prepare('SELECT id, name FROM editions WHERE is_current = 1').first<{ id: string; name: string }>();
+  if (!edition) return context.json({ error: { code: 'NO_CURRENT_EDITION', message: 'No contest edition is currently configured.' } }, 404);
+  const row = await context.env.DB.prepare('SELECT payload, revision, updated_at AS updatedAt FROM live_stage_states WHERE edition_id = ?')
+    .bind(edition.id).first<{ payload: string; revision: number; updatedAt: string }>();
+  let state: unknown = null;
+  if (row) {
+    try { state = JSON.parse(row.payload); } catch { state = null; }
+  }
+  return context.json({ edition: edition.name, state, revision: row?.revision ?? 0, updatedAt: row?.updatedAt ?? null });
+});
+
 publicRoutes.get('/contest', async (context) => {
   const edition = await context.env.DB.prepare(`
     SELECT id, slug, name, year, phase, results_public AS resultsPublic,

@@ -30,6 +30,35 @@ adminRoutes.post('/login', async (context) => {
 
 adminRoutes.use('/*', requireAdmin);
 
+adminRoutes.get('/live-stage', async (context) => {
+  const edition = await context.env.DB.prepare('SELECT id FROM editions WHERE is_current = 1').first<{ id: string }>();
+  if (!edition) return context.json({ error: { code: 'NO_CURRENT_EDITION', message: 'No contest edition is currently configured.' } }, 404);
+  const row = await context.env.DB.prepare('SELECT payload, revision, updated_at AS updatedAt FROM live_stage_states WHERE edition_id = ?')
+    .bind(edition.id).first<{ payload: string; revision: number; updatedAt: string }>();
+  let state: unknown = null;
+  if (row) {
+    try { state = JSON.parse(row.payload); } catch { state = null; }
+  }
+  return context.json({ editionId: edition.id, state, revision: row?.revision ?? 0, updatedAt: row?.updatedAt ?? null });
+});
+
+adminRoutes.put('/live-stage', async (context) => {
+  const edition = await context.env.DB.prepare('SELECT id FROM editions WHERE is_current = 1').first<{ id: string }>();
+  if (!edition) return context.json({ error: { code: 'NO_CURRENT_EDITION', message: 'No contest edition is currently configured.' } }, 404);
+  const body = await context.req.json<{ state?: unknown }>().catch(() => ({} as { state?: unknown }));
+  if (!body.state || typeof body.state !== 'object') return context.json({ error: { code: 'INVALID_INPUT', message: 'A valid live stage state is required.' } }, 400);
+  const payload = JSON.stringify(body.state);
+  if (payload.length > 20_000) return context.json({ error: { code: 'INVALID_INPUT', message: 'The live stage state is too large.' } }, 400);
+  await context.env.DB.prepare(`INSERT INTO live_stage_states (edition_id, payload, revision, updated_at)
+    VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+    ON CONFLICT(edition_id) DO UPDATE SET payload = excluded.payload,
+      revision = live_stage_states.revision + 1, updated_at = CURRENT_TIMESTAMP`)
+    .bind(edition.id, payload).run();
+  const row = await context.env.DB.prepare('SELECT revision, updated_at AS updatedAt FROM live_stage_states WHERE edition_id = ?')
+    .bind(edition.id).first<{ revision: number; updatedAt: string }>();
+  return context.json({ editionId: edition.id, revision: row?.revision ?? 1, updatedAt: row?.updatedAt ?? new Date().toISOString() });
+});
+
 adminRoutes.get('/dashboard', async (context) => {
   const edition = await context.env.DB.prepare(`SELECT id, name, slug, year, phase, results_public AS resultsPublic,
     public_status_enabled AS publicStatusEnabled, reveal_count AS revealCount, voting_deadline AS votingDeadline,

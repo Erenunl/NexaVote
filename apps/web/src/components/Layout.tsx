@@ -9,6 +9,7 @@ const links = [
   { to: '/participants', label: 'Katılımcılar' },
   { to: '/champions', label: 'Şampiyonlar' },
   { to: '/results', label: 'Sonuçlar' },
+  { to: '/stage', label: 'Canlı Sahne' },
 ];
 
 export function Layout() {

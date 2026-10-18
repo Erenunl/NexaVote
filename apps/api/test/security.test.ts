@@ -20,8 +20,10 @@ describe('authentication and authorization', () => {
 
   it('rejects protected routes without bearer authentication', async () => {
     const adminResponse = await app.request('/api/admin/dashboard', {}, {} as never);
+    const stageResponse = await app.request('/api/admin/live-stage', {}, {} as never);
     const juryResponse = await app.request('/api/jury/ballot', {}, {} as never);
     expect(adminResponse.status).toBe(401);
+    expect(stageResponse.status).toBe(401);
     expect(juryResponse.status).toBe(401);
   });
 

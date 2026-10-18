@@ -193,6 +193,10 @@ body:has(.results-opening) { overflow: hidden; }
 .live-stage-heading p:last-child { margin-top: .35rem; color: var(--stage-muted); font-size: .9rem; }
 .live-stage-heading-status { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
 .live-stage-heading-status > span:last-child { font-size: .68rem; font-weight: 900; letter-spacing: .18em; color: rgba(197,255,237,.45); }
+.stage-broadcast-status { border: 1px solid rgba(255,255,255,.12); border-radius: 999px; padding: .4rem .65rem; font-size: .58rem; font-weight: 900; letter-spacing: .12em; }
+.stage-broadcast-synced { border-color: rgba(98,242,197,.26); background: rgba(24,180,133,.12); color: #86f9d5; }
+.stage-broadcast-syncing, .stage-broadcast-loading { color: rgba(213,255,242,.55); }
+.stage-broadcast-error { border-color: rgba(251,113,133,.3); background: rgba(244,63,94,.12); color: #fecdd3; }
 .stage-status { display: inline-flex; align-items: center; gap: .55rem; border: 1px solid rgba(255,255,255,.16); border-radius: 999px; padding: .55rem .8rem; background: rgba(0,0,0,.26); font-size: .68rem; font-weight: 900; letter-spacing: .13em; }
 .stage-status i { width: .48rem; height: .48rem; border-radius: 50%; background: #5f6f6b; }
 .stage-status-opening i { background: #ffc04c; box-shadow: 0 0 15px #ffc04c; animation: pulseSoft 1s ease-in-out infinite; }
@@ -218,6 +222,19 @@ body:has(.results-opening) { overflow: hidden; }
 .live-stage-loader small { margin-top: .65rem; text-align: center; color: rgba(213,255,242,.45); }
 .live-stage-progress { height: .33rem; margin-top: 1rem; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.09); }
 .live-stage-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #2ccf9e, #68d9f3, #ae70ff); box-shadow: 0 0 18px rgba(57,235,181,.55); transition: width .25s ease; }
+.live-stage-public-shell { position: fixed; inset: 0; z-index: 100; overflow: hidden; background: #010405; color: #f3fff9; }
+.live-stage-public-viewport { width: 100%; height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
+.live-stage-public-loading { display: grid; place-content: center; justify-items: center; gap: .7rem; text-align: center; background: radial-gradient(circle at 50% 48%, rgba(10,96,79,.32), #010405 56%); }
+.live-stage-public-loading svg { width: 2rem; height: 2rem; color: #62f2c5; animation: stageStatusPulse 1.4s ease-in-out infinite; }
+.live-stage-public-loading strong { font-family: Outfit, sans-serif; font-size: clamp(1.2rem, 3vw, 2rem); text-transform: uppercase; letter-spacing: .08em; }
+.live-stage-public-loading span { color: rgba(213,255,242,.48); font-size: .82rem; }
+.live-stage-public-status { position: fixed; right: 1.1rem; bottom: 1.1rem; z-index: 110; display: flex; align-items: center; gap: .65rem; border: 1px solid rgba(255,255,255,.13); border-radius: 1rem; padding: .65rem .8rem; background: rgba(0,8,8,.68); backdrop-filter: blur(16px); box-shadow: 0 12px 35px rgba(0,0,0,.3); pointer-events: none; }
+.live-stage-public-status svg { width: 1.05rem; height: 1.05rem; }
+.live-stage-public-status span { display: flex; flex-direction: column; gap: .08rem; }
+.live-stage-public-status strong { font-size: .62rem; letter-spacing: .16em; }
+.live-stage-public-status small { color: rgba(213,255,242,.48); font-size: .62rem; }
+.live-stage-public-status.is-connected svg, .live-stage-public-status.is-connected strong { color: #62f2c5; }
+.live-stage-public-status.is-disconnected svg, .live-stage-public-status.is-disconnected strong { color: #fda4af; }
 .live-stage-console { display: grid; gap: 1rem; margin-top: 1rem; }
 .live-stage-console-card { position: relative; overflow: hidden; border: 1px solid var(--stage-border); border-radius: 1.4rem; padding: 1.2rem; background: linear-gradient(150deg, rgba(223,255,246,.07), rgba(3,43,37,.82) 35%, rgba(1,23,21,.94)); box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 16px 44px rgba(0,12,11,.28); }
 .live-stage-console-card::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(125deg, rgba(169,255,226,.07), transparent 28% 75%, rgba(104,217,243,.04)); }
@@ -323,6 +340,7 @@ table tbody tr:hover { background-color: rgba(255,63,173,.08); }
 @keyframes openingBeamTwo { to { transform: translate(-50%, -8%) rotate(-52deg) scaleX(.8); } }
 @keyframes openingBeamThree { to { transform: translate(-50%, -8%) rotate(-9deg) scaleX(1.25); } }
 @keyframes stageBlackoutIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes stageStatusPulse { 0%, 100% { opacity: .45; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.05); } }
 .reveal-row { animation: revealRow .55s both; }
 
 @media (max-width: 640px) {

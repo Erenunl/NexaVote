@@ -7,15 +7,16 @@ import {
 } from 'lucide-react';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { api } from '../lib/api';
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/nexavision-aurora-r03.glb`;
 const INTRO_SECONDS = 14;
 
-type Quality = 'low' | 'medium' | 'high';
-type ShowState = 'blackout' | 'opening' | 'live';
-type CameraPreset = 'overview' | 'diagonal' | 'jury';
+export type Quality = 'low' | 'medium' | 'high';
+export type ShowState = 'blackout' | 'opening' | 'live';
+export type CameraPreset = 'overview' | 'diagonal' | 'jury';
 
-type StageControls = {
+export type StageControls = {
   mainColor: string;
   accentColor: string;
   master: number;
@@ -63,7 +64,7 @@ const palettes = {
   nexa: { main: '#7236ff', accent: '#ff3f91', label: 'Mor / pembe' },
 };
 
-const defaultControls: StageControls = {
+export const defaultControls: StageControls = {
   mainColor: '#2f7dff',
   accentColor: '#ff7b22',
   master: 1,
@@ -88,6 +89,43 @@ const defaultControls: StageControls = {
   screenEnabled: true,
 };
 
+export type LiveStageBroadcastState = {
+  controls: StageControls;
+  showState: ShowState;
+  introStartedAt: number | null;
+  cameraPreset: CameraPreset;
+  cameraSeconds: number;
+  quality: Quality;
+  reducedMotion: boolean;
+};
+
+export const defaultBroadcastState: LiveStageBroadcastState = {
+  controls: defaultControls,
+  showState: 'blackout',
+  introStartedAt: null,
+  cameraPreset: 'overview',
+  cameraSeconds: 2.4,
+  quality: 'medium',
+  reducedMotion: false,
+};
+
+export function normalizeLiveStageState(value: unknown): LiveStageBroadcastState {
+  if (!value || typeof value !== 'object') return { ...defaultBroadcastState, controls: { ...defaultControls } };
+  const candidate = value as Partial<LiveStageBroadcastState>;
+  const showState = candidate.showState && ['blackout', 'opening', 'live'].includes(candidate.showState) ? candidate.showState : 'blackout';
+  const cameraPreset = candidate.cameraPreset && ['overview', 'diagonal', 'jury'].includes(candidate.cameraPreset) ? candidate.cameraPreset : 'overview';
+  const quality = candidate.quality && ['low', 'medium', 'high'].includes(candidate.quality) ? candidate.quality : 'medium';
+  return {
+    controls: { ...defaultControls, ...(candidate.controls ?? {}) },
+    showState,
+    introStartedAt: typeof candidate.introStartedAt === 'number' ? candidate.introStartedAt : null,
+    cameraPreset,
+    cameraSeconds: typeof candidate.cameraSeconds === 'number' ? THREE.MathUtils.clamp(candidate.cameraSeconds, 0.5, 8) : 2.4,
+    quality,
+    reducedMotion: Boolean(candidate.reducedMotion),
+  };
+}
+
 function quintic(value: number) {
   const t = THREE.MathUtils.clamp(value, 0, 1);
   return t * t * t * (t * (t * 6 - 15) + 10);
@@ -100,7 +138,7 @@ function ramp(time: number, start: number, end: number) {
 function introChannels(state: ShowState, introStartedAt: number | null, reducedMotion: boolean): IntroChannels {
   if (state === 'blackout') return { environment: 0, front: 0, spots: 0, floor: 0, jury: 0, edges: 0, leaf: 0, screen: 0 };
   if (state === 'live' || introStartedAt === null) return { environment: 1, front: 1, spots: 1, floor: 1, jury: 1, edges: 1, leaf: 1, screen: 1 };
-  const time = Math.max(0, (performance.now() - introStartedAt) / 1000);
+  const time = Math.max(0, (Date.now() - introStartedAt) / 1000);
   const smoothSpots = ramp(time, 0.8, 5.2);
   const sparseCuts = reducedMotion || time > 5.2
     ? smoothSpots
@@ -346,10 +384,11 @@ function StageLighting({ controls, showState, introStartedAt, reducedMotion, qua
   </>;
 }
 
-function CameraRig({ preset, transitionSeconds, controlsRef }: {
+function CameraRig({ preset, transitionSeconds, controlsRef, interactive }: {
   preset: CameraPreset;
   transitionSeconds: number;
   controlsRef: React.MutableRefObject<OrbitControlsImpl | null>;
+  interactive: boolean;
 }) {
   const { camera } = useThree();
   const transition = useRef<{
@@ -383,7 +422,7 @@ function CameraRig({ preset, transitionSeconds, controlsRef }: {
       target,
     };
     if (controlsRef.current) controlsRef.current.enabled = false;
-  }, [camera, controlsRef, preset, transitionSeconds]);
+  }, [camera, controlsRef, interactive, preset, transitionSeconds]);
 
   useFrame(() => {
     const active = transition.current;
@@ -399,7 +438,7 @@ function CameraRig({ preset, transitionSeconds, controlsRef }: {
       transition.current = null;
       if (controlsRef.current) {
         controlsRef.current.target.copy(active.target);
-        controlsRef.current.enabled = true;
+        controlsRef.current.enabled = interactive;
         controlsRef.current.update();
       }
     }
@@ -407,7 +446,7 @@ function CameraRig({ preset, transitionSeconds, controlsRef }: {
   return null;
 }
 
-function StageWorld({ controls, showState, introStartedAt, reducedMotion, quality, cameraPreset, cameraSeconds, videoElement, videoReady }: {
+function StageWorld({ controls, showState, introStartedAt, reducedMotion, quality, cameraPreset, cameraSeconds, videoElement, videoReady, interactive }: {
   controls: StageControls;
   showState: ShowState;
   introStartedAt: number | null;
@@ -417,13 +456,14 @@ function StageWorld({ controls, showState, introStartedAt, reducedMotion, qualit
   cameraSeconds: number;
   videoElement: HTMLVideoElement | null;
   videoReady: boolean;
+  interactive: boolean;
 }) {
   const orbitRef = useRef<OrbitControlsImpl | null>(null);
   return <>
-    <CameraRig preset={cameraPreset} transitionSeconds={cameraSeconds} controlsRef={orbitRef} />
+    <CameraRig preset={cameraPreset} transitionSeconds={cameraSeconds} controlsRef={orbitRef} interactive={interactive} />
     <StageLighting controls={controls} showState={showState} introStartedAt={introStartedAt} reducedMotion={reducedMotion} quality={quality} />
     <StageModel controls={controls} showState={showState} introStartedAt={introStartedAt} reducedMotion={reducedMotion} videoElement={videoElement} videoReady={videoReady} />
-    <OrbitControls ref={orbitRef} target={[0, 9, 4]} enableDamping dampingFactor={0.065} enablePan={false} minDistance={26} maxDistance={110} maxPolarAngle={Math.PI * 0.49} />
+    <OrbitControls ref={orbitRef} target={[0, 9, 4]} enabled={interactive} enableDamping dampingFactor={0.065} enablePan={false} minDistance={26} maxDistance={110} maxPolarAngle={Math.PI * 0.49} />
   </>;
 }
 
@@ -435,7 +475,44 @@ function ChannelControl({ label, enabled, level, onEnabled, onLevel }: { label: 
   return <div className="stage-channel"><Toggle checked={enabled} onChange={onEnabled} label={label} /><input aria-label={`${label} parlaklığı`} type="range" min="0" max="1" step="0.01" value={level} disabled={!enabled} onChange={(event) => onLevel(Number(event.target.value))} /></div>;
 }
 
-export function AdminLiveStage() {
+export function LiveStageView({ state, videoElement = null, videoReady = false, interactive = false, publicView = false }: {
+  state: LiveStageBroadcastState;
+  videoElement?: HTMLVideoElement | null;
+  videoReady?: boolean;
+  interactive?: boolean;
+  publicView?: boolean;
+}) {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const openingFinished = state.showState === 'opening' && state.introStartedAt !== null && Date.now() - state.introStartedAt >= INTRO_SECONDS * 1000;
+  const showState = openingFinished ? 'live' : state.showState;
+  const introStartedAt = openingFinished ? null : state.introStartedAt;
+  const dpr = state.quality === 'low' ? 1 : state.quality === 'medium' ? [1, 1.45] as [number, number] : [1, 1.8] as [number, number];
+
+  useEffect(() => {
+    const listener = () => setIsFullscreen(document.fullscreenElement === stageRef.current);
+    document.addEventListener('fullscreenchange', listener);
+    return () => document.removeEventListener('fullscreenchange', listener);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    if (!stageRef.current) return;
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await stageRef.current.requestFullscreen();
+  };
+
+  return <section ref={stageRef} className={`live-stage-viewport quality-${state.quality} ${publicView ? 'live-stage-public-viewport' : ''}`}>
+    <Canvas dpr={dpr} camera={{ position: cameraPresets.overview.position, fov: cameraPresets.overview.fov, near: 0.1, far: 400 }} gl={{ antialias: state.quality !== 'low', powerPreference: 'high-performance', alpha: false }} shadows={state.quality === 'high'} onCreated={({ gl, camera }) => { camera.lookAt(new THREE.Vector3(...cameraPresets.overview.target)); gl.outputColorSpace = THREE.SRGBColorSpace; gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 1.05; gl.setClearColor('#010405'); }}>
+      <Suspense fallback={null}><StageWorld controls={state.controls} showState={showState} introStartedAt={introStartedAt} reducedMotion={state.reducedMotion} quality={state.quality} cameraPreset={state.cameraPreset} cameraSeconds={state.cameraSeconds} videoElement={videoElement} videoReady={videoReady} interactive={interactive} /></Suspense>
+    </Canvas>
+    <LoadingOverlay />
+    <div className="live-stage-hud"><span>NEXAVISION · HELSINKI 2026</span><strong>{cameraPresets[state.cameraPreset].label}</strong></div>
+    <button className="live-stage-fullscreen" type="button" onClick={toggleFullscreen}>{isFullscreen ? <Minimize2 /> : <Maximize2 />}<span>{isFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'}</span></button>
+    {showState === 'blackout' && <div className="live-stage-blackout"><Sparkles /><strong>Sahne beklemede</strong><span>{publicView ? 'Canlı yayın rejiden başlatıldığında burada görünecek.' : 'Rejiden açılışı başlatın veya doğrudan açın.'}</span></div>}
+  </section>;
+}
+
+export function AdminLiveStage({ token }: { token: string }) {
   const [controls, setControls] = useState(defaultControls);
   const [showState, setShowState] = useState<ShowState>('blackout');
   const [introStartedAt, setIntroStartedAt] = useState<number | null>(null);
@@ -443,15 +520,19 @@ export function AdminLiveStage() {
   const [cameraSeconds, setCameraSeconds] = useState(2.4);
   const [quality, setQuality] = useState<Quality>('medium');
   const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoReady, setVideoReady] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [videoMuted, setVideoMuted] = useState(true);
   const [videoVolume, setVideoVolume] = useState(0.75);
   const [notice, setNotice] = useState('Yerel video seçilmedi; sahne ekranında geçici Nexavision görseli kullanılıyor.');
-  const stageRef = useRef<HTMLDivElement>(null);
+  const [broadcastReady, setBroadcastReady] = useState(false);
+  const [broadcastStatus, setBroadcastStatus] = useState<'loading' | 'synced' | 'syncing' | 'error'>('loading');
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  const broadcastState = useMemo<LiveStageBroadcastState>(() => ({
+    controls, showState, introStartedAt, cameraPreset, cameraSeconds, quality, reducedMotion,
+  }), [cameraPreset, cameraSeconds, controls, introStartedAt, quality, reducedMotion, showState]);
 
   const update = useCallback(<K extends keyof StageControls>(key: K, value: StageControls[K]) => {
     setControls((current) => ({ ...current, [key]: value }));
@@ -459,16 +540,43 @@ export function AdminLiveStage() {
 
   useEffect(() => {
     if (showState !== 'opening' || introStartedAt === null) return;
-    const remaining = Math.max(0, INTRO_SECONDS * 1000 - (performance.now() - introStartedAt));
+    const remaining = Math.max(0, INTRO_SECONDS * 1000 - (Date.now() - introStartedAt));
     const timer = window.setTimeout(() => { setShowState('live'); setIntroStartedAt(null); }, remaining);
     return () => window.clearTimeout(timer);
   }, [introStartedAt, showState]);
 
   useEffect(() => {
-    const listener = () => setIsFullscreen(document.fullscreenElement === stageRef.current);
-    document.addEventListener('fullscreenchange', listener);
-    return () => document.removeEventListener('fullscreenchange', listener);
-  }, []);
+    let cancelled = false;
+    api<{ state: unknown }>('/api/admin/live-stage', { token }).then((response) => {
+      if (cancelled) return;
+      const state = normalizeLiveStageState(response.state);
+      setControls(state.controls);
+      setShowState(state.showState);
+      setIntroStartedAt(state.introStartedAt);
+      setCameraPreset(state.cameraPreset);
+      setCameraSeconds(state.cameraSeconds);
+      setQuality(state.quality);
+      setReducedMotion(state.reducedMotion);
+      setBroadcastReady(true);
+      setBroadcastStatus('synced');
+    }).catch(() => {
+      if (cancelled) return;
+      setBroadcastReady(true);
+      setBroadcastStatus('error');
+    });
+    return () => { cancelled = true; };
+  }, [token]);
+
+  useEffect(() => {
+    if (!broadcastReady) return;
+    setBroadcastStatus('syncing');
+    const timer = window.setTimeout(() => {
+      api('/api/admin/live-stage', { method: 'PUT', token, body: JSON.stringify({ state: broadcastState }) })
+        .then(() => setBroadcastStatus('synced'))
+        .catch(() => setBroadcastStatus('error'));
+    }, 140);
+    return () => window.clearTimeout(timer);
+  }, [broadcastReady, broadcastState, token]);
 
   useEffect(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl); }, [videoUrl]);
   useEffect(() => {
@@ -479,7 +587,7 @@ export function AdminLiveStage() {
 
   const startShow = () => {
     setShowState('opening');
-    setIntroStartedAt(performance.now());
+    setIntroStartedAt(Date.now());
   };
   const blackout = () => {
     setShowState('blackout');
@@ -516,30 +624,15 @@ export function AdminLiveStage() {
     }
   };
 
-  const toggleFullscreen = async () => {
-    if (!stageRef.current) return;
-    if (document.fullscreenElement) await document.exitFullscreen();
-    else await stageRef.current.requestFullscreen();
-  };
-
-  const dpr = quality === 'low' ? 1 : quality === 'medium' ? [1, 1.45] as [number, number] : [1, 1.8] as [number, number];
   const statusLabel = showState === 'blackout' ? 'KARANLIK' : showState === 'opening' ? 'AÇILIŞ' : 'SAHNE AÇIK';
 
   return <div className="live-stage-admin mt-6">
     <section className="live-stage-heading">
       <div><p className="eyebrow">Yalnızca yönetici</p><h2>Nexavision Live Stage</h2><p>Blender R03 sahnesinin gerçek zamanlı WebGL prototipi. Bu bölüm genel kullanıcı arayüzünde görünmez.</p></div>
-      <div className="live-stage-heading-status"><span className={`stage-status stage-status-${showState}`}><i />{statusLabel}</span><span>GLB · React Three Fiber</span></div>
+      <div className="live-stage-heading-status"><span className={`stage-status stage-status-${showState}`}><i />{statusLabel}</span><span className={`stage-broadcast-status stage-broadcast-${broadcastStatus}`}>{broadcastStatus === 'synced' ? 'İZLEYİCİYE CANLI' : broadcastStatus === 'syncing' ? 'SENKRONİZE EDİLİYOR' : broadcastStatus === 'loading' ? 'YAYIN DURUMU YÜKLENİYOR' : 'SENKRON HATASI'}</span><span>GLB · React Three Fiber</span></div>
     </section>
 
-    <section ref={stageRef} className={`live-stage-viewport quality-${quality}`}>
-      <Canvas dpr={dpr} camera={{ position: cameraPresets.overview.position, fov: cameraPresets.overview.fov, near: 0.1, far: 400 }} gl={{ antialias: quality !== 'low', powerPreference: 'high-performance', alpha: false }} shadows={quality === 'high'} onCreated={({ gl, camera }) => { camera.lookAt(new THREE.Vector3(...cameraPresets.overview.target)); gl.outputColorSpace = THREE.SRGBColorSpace; gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 1.05; gl.setClearColor('#010405'); }}>
-        <Suspense fallback={null}><StageWorld controls={controls} showState={showState} introStartedAt={introStartedAt} reducedMotion={reducedMotion} quality={quality} cameraPreset={cameraPreset} cameraSeconds={cameraSeconds} videoElement={videoRef.current} videoReady={videoReady} /></Suspense>
-      </Canvas>
-      <LoadingOverlay />
-      <div className="live-stage-hud"><span>NEXAVISION · HELSINKI 2026</span><strong>{cameraPresets[cameraPreset].label}</strong></div>
-      <button className="live-stage-fullscreen" type="button" onClick={toggleFullscreen}>{isFullscreen ? <Minimize2 /> : <Maximize2 />}<span>{isFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'}</span></button>
-      {showState === 'blackout' && <div className="live-stage-blackout"><Sparkles /><strong>Sahne beklemede</strong><span>Rejiden açılışı başlatın veya doğrudan açın.</span></div>}
-    </section>
+    <LiveStageView state={broadcastState} videoElement={videoRef.current} videoReady={videoReady} interactive />
 
     <video ref={videoRef} className="sr-only" playsInline loop muted={videoMuted} onCanPlay={() => setVideoReady(true)} onPlaying={() => setVideoPlaying(true)} onPause={() => setVideoPlaying(false)} />
 
