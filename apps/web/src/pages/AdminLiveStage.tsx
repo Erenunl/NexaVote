@@ -433,6 +433,7 @@ function SeatLighting({ controls, showState, introStartedAt, reducedMotion }: {
   const mesh = useRef<THREE.InstancedMesh>(null);
   const material = useRef<THREE.MeshBasicMaterial>(null);
   const lastUpdate = useRef(-1);
+  const lastColorKey = useRef('');
   const colors = useMemo(() => ({ main: new THREE.Color(), accent: new THREE.Color(), result: new THREE.Color() }), []);
   useEffect(() => {
     if (!mesh.current) return;
@@ -449,6 +450,10 @@ function SeatLighting({ controls, showState, introStartedAt, reducedMotion }: {
     material.current.color.setScalar(level * 1.5);
     mesh.current.visible = level > 0;
     if (level <= 0 || clock.elapsedTime - lastUpdate.current < 0.05) return;
+    const moving = controls.seatsWave && !reducedMotion;
+    const colorKey = `${controls.mainColor}:${controls.accentColor}:${moving}`;
+    if (!moving && lastColorKey.current === colorKey) return;
+    lastColorKey.current = colorKey;
     lastUpdate.current = clock.elapsedTime;
     colors.main.set(controls.mainColor);
     colors.accent.set(controls.accentColor);

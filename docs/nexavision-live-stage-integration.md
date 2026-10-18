@@ -70,3 +70,11 @@ Yerel prototip modeli `apps/web/public/models/nexavision-aurora-r03.glb` dosyas�
 6. **Yayından kaldır** cue'yu null yapar; izleyicilerde oynatma durur, fetch iptal edilir, video src temizlenir ve Blob URL serbest bırakılır. Kaynak site dosyaları ve diğer konuk/açılış akışları silinmez. Tarayıcının HTTP disk önbelleğini uzaktan silme iddiası yoktur.
 
 Ana ekran, orijinal ekranın dünya koordinatlarında bağımsız UV düzlemi kullanır. Görüntü oranı korunur, video renklerine sahne paleti uygulanmaz. Eski ters konsept yazısı gizlenmiştir.
+
+## Video takılmasına karşı oynatma denetimi
+
+- Ortak zamanla senkronizasyon için sürekli `currentTime` ataması yapılmaz. Yalnızca yeni oynatma/duraklatma komutu, geç katılım veya açık toparlanma adımı konuma atlar. Küçük farklar %97–103 aralığında oynatma hızıyla yumuşakça düzeltilir.
+- Video iki saniye ilerlemezse arayüz kare beklendiğini belirtir. On saniyelik takılmada aynı bellekteki Blob URL yeniden açılır; dosya tekrar indirilmez. Toparlanma iki denemeyle sınırlıdır, ardından kullanıcıya hata ve yeniden deneme sunulur.
+- Tarayıcı oynatma izni istemişse otomatik toparlanma döngüsü çalışmaz; kullanıcı etkileşimi beklenir. Kaynak değişimi ve kaldırma eski asenkron oynatma işlemlerini geçersiz kılar.
+- Sabit koltuk LED renkleri yalnızca renk/mod değiştiğinde GPU'ya gönderilir. Hawaii dalgası, geometri, çözünürlük, kalite seviyeleri, ışıklar ve gölgeler korunur.
+- Regresyon testleri kesintisiz oynatma, geç katılım, takılan seek, sınırlı toparlanma, autoplay reddi, eski promise sonucu ve duraklatma/temizleme akışlarını kapsar. Bunlar gerçek cihaz performansı garantisi değildir.

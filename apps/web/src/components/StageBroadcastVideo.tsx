@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { mediaPosition, stageVideos, type StageMedia } from '../lib/stageMedia';
+import { stageVideos, type StageMedia } from '../lib/stageMedia';
+import { StagePlayback, type PlaybackPhase } from '../lib/stagePlayback';
 
-export type StageVideoStatus = { progress: number; ready: boolean; blocked: boolean; error: string | null; ended?: boolean };
+export type StageVideoStatus = { progress: number; ready: boolean; blocked: boolean; error: string | null; ended?: boolean; phase?: PlaybackPhase };
 
-// Download completely into browser memory before playback. No upload or Downloads-folder write.
 export function StageBroadcastVideo({ media, onVideo, onStatus, audible = true }: {
   media: StageMedia | null;
   onVideo: (video: HTMLVideoElement | null) => void;
@@ -11,15 +11,16 @@ export function StageBroadcastVideo({ media, onVideo, onStatus, audible = true }
   audible?: boolean;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
+  const transport = useRef<StagePlayback | null>(null);
   const [status, setStatus] = useState<StageVideoStatus>({ progress: 0, ready: false, blocked: false, error: null });
   const [retry, setRetry] = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(false);
-  const callbacks = useRef({ onVideo, onStatus });
-  callbacks.current = { onVideo, onStatus };
+  const latest = useRef({ media, audible, soundEnabled, onVideo, onStatus });
+  latest.current = { media, audible, soundEnabled, onVideo, onStatus };
   const source = media?.source;
   const cueId = media?.id;
 
-  useEffect(() => { callbacks.current.onStatus?.(status); }, [status]);
+  useEffect(() => { latest.current.onStatus?.(status); }, [status]);
   useEffect(() => {
     const video = ref.current;
     const entry = stageVideos.find((item) => item.id === source);
@@ -27,8 +28,24 @@ export function StageBroadcastVideo({ media, onVideo, onStatus, audible = true }
     const controller = new AbortController();
     let disposed = false;
     let objectUrl: string | null = null;
+    let timer: number | undefined;
+    let lastPercent = -1;
     setStatus({ progress: 0, ready: false, blocked: false, error: null });
-    callbacks.current.onVideo(null);
+    latest.current.onVideo(null);
+    const player = new StagePlayback(video, (phase) => {
+      if (!disposed) setStatus((current) => ({ ...current, phase, blocked: phase === 'blocked', ended: phase === 'ended',
+        error: phase === 'error' ? 'Video oynatıcısı yanıt vermiyor. Yeniden deneyin.' : null }));
+    });
+    transport.current = player;
+    const loaded = () => {
+      if (disposed) return;
+      setStatus((current) => ({ ...current, progress: 100, ready: true }));
+      latest.current.onVideo(video);
+      player.loaded();
+    };
+    const failed = () => { if (!disposed && video.error?.code !== 1) player.failed(); };
+    video.addEventListener('loadeddata', loaded);
+    video.addEventListener('error', failed);
     video.pause();
     const load = async () => {
       try {
@@ -43,12 +60,19 @@ export function StageBroadcastVideo({ media, onVideo, onStatus, audible = true }
           if (done) break;
           received += value.byteLength;
           chunks.push(new Uint8Array(value));
-          if (!disposed) setStatus((current) => ({ ...current, progress: total > 0 ? Math.min(99, received / total * 100) : 0 }));
+          const progress = total > 0 ? Math.min(99, Math.floor(received / total * 100)) : 0;
+          if (!disposed && progress !== lastPercent) {
+            lastPercent = progress;
+            setStatus((current) => ({ ...current, progress }));
+          }
         }
         if (disposed) return;
         objectUrl = URL.createObjectURL(new Blob(chunks, { type: 'video/mp4' }));
+        player.prepare();
         video.src = objectUrl;
         video.load();
+        if (latest.current.media) player.configure(latest.current.media, latest.current.audible && latest.current.soundEnabled);
+        timer = window.setInterval(() => player.tick(), 500);
       } catch (error) {
         if (!disposed) setStatus((current) => ({ ...current, error: error instanceof Error ? error.message : 'Video yüklenemedi.' }));
       }
@@ -57,48 +81,37 @@ export function StageBroadcastVideo({ media, onVideo, onStatus, audible = true }
     return () => {
       disposed = true;
       controller.abort();
-      video.pause();
+      window.clearInterval(timer);
+      video.removeEventListener('loadeddata', loaded);
+      video.removeEventListener('error', failed);
+      player.dispose();
+      transport.current = null;
       video.removeAttribute('src');
       video.load();
-      callbacks.current.onVideo(null);
+      latest.current.onVideo(null);
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [source, cueId, retry]);
 
   useEffect(() => {
-    const video = ref.current;
-    if (!video || !media || !status.ready) return;
-    const synchronize = () => {
-      video.volume = media.volume;
-      video.muted = !audible || media.muted || !soundEnabled;
-      const target = mediaPosition(media, video.duration);
-      const ended = Number.isFinite(video.duration) && target >= video.duration - 0.1;
-      setStatus((current) => Boolean(current.ended) === ended ? current : { ...current, ended });
-      // Avoid repeated seeks during decode/buffering: those can perpetuate a stall.
-      if (!video.seeking && Math.abs(video.currentTime - target) > (media.playing ? 2.5 : 0.1)) video.currentTime = target;
-      if (media.playing && target < video.duration - 0.1) {
-        if (video.paused) void video.play().catch(() => setStatus((current) => ({ ...current, blocked: true })));
-      } else video.pause();
-    };
-    synchronize();
-    const timer = window.setInterval(synchronize, 1500);
-    return () => window.clearInterval(timer);
-  }, [media, status.ready, audible, soundEnabled]);
+    if (media) transport.current?.configure(media, audible && soundEnabled);
+  }, [media, audible, soundEnabled]);
 
   if (!media) return null;
+  const label = !status.ready ? `Video ön yükleniyor · %${Math.round(status.progress)}`
+    : status.phase === 'recovering' ? 'Oynatıcı toparlanıyor…'
+      : status.phase === 'waiting' ? 'Video karesi bekleniyor…'
+        : status.blocked ? 'Oynatma izni gerekiyor'
+          : status.ended ? 'Video sona erdi'
+            : status.phase === 'playing' ? 'Video yayında' : 'Video hazır · Reji bekleniyor';
   return <div className="stage-media-status" role="status">
-    <video ref={ref} className="stage-video-element" playsInline preload="auto" muted={!soundEnabled || !audible || media.muted}
-      onLoadedData={() => { setStatus({ progress: 100, ready: true, blocked: false, error: null }); callbacks.current.onVideo(ref.current); }}
-      onError={() => setStatus((current) => ({ ...current, ready: false, error: 'Video bu tarayıcıda çözülemedi. Yeniden deneyin.' }))} />
-    <span>{status.error || (status.ready ? (status.ended ? 'Video sona erdi' : media.playing ? 'Video yayında' : 'Video hazır · Reji bekleniyor') : `Video ön yükleniyor · %${Math.round(status.progress)}`)}</span>
-    {status.error && <button type="button" onClick={() => setRetry((value) => value + 1)}>Yeniden yükle</button>}
+    <video ref={ref} className="stage-video-element" playsInline preload="auto" muted={!soundEnabled || !audible || media.muted} />
+    <span>{status.error || label}</span>
+    {status.error && <button type="button" onClick={() => setRetry((value) => value + 1)}>Yeniden dene</button>}
     {status.ready && audible && (!soundEnabled || status.blocked) && <button type="button" onClick={() => {
       setSoundEnabled(true);
-      const video = ref.current;
-      if (video && media.playing) {
-        video.muted = media.muted;
-        void video.play().then(() => setStatus((current) => ({ ...current, blocked: false }))).catch(() => setStatus((current) => ({ ...current, blocked: true })));
-      }
+      transport.current?.configure(media, true);
+      transport.current?.unlock();
     }}>Sesi / oynatmayı etkinleştir</button>}
   </div>;
 }
